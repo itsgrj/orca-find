@@ -1,0 +1,11 @@
+# SwiftPM / build output
+.build/
+build/
+*.xcodeproj/xcuserdata/
+.swiftpm/
+
+# MobileCLIP models (~190 MB) — recreate with tools/fetch_mobileclip.sh (build.sh runs it if missing)
+Resources/Models/
+
+# macOS
+.DS_Store
