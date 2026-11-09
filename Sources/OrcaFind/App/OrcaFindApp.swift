@@ -9,6 +9,7 @@ struct OrcaFindApp: App {
     init() {
         MCPServer.runIfRequested()
         DebugCLI.runIfRequested()
+        EditDebug.runIfRequested()
     }
 
     var body: some Scene {
