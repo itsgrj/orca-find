@@ -31,7 +31,47 @@ enum PDFSelfTest {
         let n0 = ws.pageCount
         print("pages: \(n0) · text: \(ws.hasText ? "yes" : "no (scanned)") · \(Fmt.size(item.size))")
         check(ws.groups.flatMap(\.tools).count == 25, "25 tools in 4 groups")
-        check(!ws.isAvailable(.scanFromIPhone) && !ws.isAvailable(.makeSearchable), "scan & make searchable marked later")
+        check(ws.isAvailable(.scanFromIPhone) && ws.isAvailable(.makeSearchable), "scan from iPhone & make searchable available")
+
+        // Scan from iPhone: hand the workspace what Continuity Camera puts on the pasteboard.
+        do {
+            let w2 = PDFWorkspace(item: item)
+            let before = w2.pageCount
+            let pb = NSPasteboard(name: NSPasteboard.Name("orca-scan-selftest"))
+            pb.clearContents()
+            let one = PDFDocument()
+            if let p = w2.pages.first?.copy() as? PDFPage { one.insert(p, at: 0) }
+            pb.setData(one.dataRepresentation(), forType: .pdf)
+            check(w2.receiveScan(pb) && w2.pageCount == before + 1 && w2.current == 1, "scan from iPhone: scanned page lands after page 1")
+            pb.clearContents()
+            let photo = NSImage(size: NSSize(width: 600, height: 800), flipped: false) { r in NSColor.systemTeal.setFill(); r.fill(); return true }
+            pb.writeObjects([photo])
+            check(w2.receiveScan(pb) && w2.pageCount == before + 2, "scan from iPhone: a photo becomes a page")
+            pb.releaseGlobally()
+        }
+
+        // Make searchable: picture-only pages get an invisible text layer.
+        do {
+            let w3 = PDFWorkspace(item: item)
+            let missing = w3.textlessPages
+            if missing.isEmpty {
+                print("note make searchable: every page already has text")
+            } else {
+                let t0 = Date()
+                w3.makeSearchable()
+                var waited = 0
+                while w3.busy != nil && waited < 1200 { try? await Task.sleep(nanoseconds: 100_000_000); waited += 1 }
+                let left = w3.textlessPages.count
+                check(left < missing.count, String(format: "make searchable: %d picture pages → %d left (%.1fs)", missing.count, left, Date().timeIntervalSince(t0)))
+                if let url = try? await w3.save(), let saved = PDFDocument(url: url), let pg = saved.page(at: missing[0]) {
+                    let text = (pg.string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                    check(text.count > 20, "saved copy has text on page \(missing[0] + 1): “\(text.prefix(60).replacingOccurrences(of: "\n", with: " "))…”")
+                    let word = text.split(separator: " ").first(where: { $0.count > 4 }).map(String.init) ?? ""
+                    check(!word.isEmpty && !(saved.findString(word, withOptions: .caseInsensitive).isEmpty), "find “\(word)” in the saved copy")
+                    check(pg.rotation == w3.pages[missing[0]].rotation, "page rotation kept")
+                } else { check(false, "save searchable copy") }
+            }
+        }
 
         // Pages
         ws.rotate([0])

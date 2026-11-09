@@ -26,9 +26,18 @@ cp Resources/MenuBarIcon.png Resources/MenuBarIcon@2x.png "$APP/Contents/Resourc
 cp -R Resources/Fonts Resources/Backgrounds "$APP/Contents/Resources/"
 # About › credits (licence credit for the optional speech model).
 cp Resources/Credits.rtf "$APP/Contents/Resources/"
-# MobileCLIP-S2 (~190 MB) for describing pictures; fetched + compiled once by tools/fetch_mobileclip.sh.
+# MobileCLIP-S2 (~190 MB) for describing pictures; fetched + compiled once by tools/fetch_mobileclip.sh
+# (the app downloads its own copy; this one is for running from .build and for the tokenizer files).
 [[ -d Resources/Models/mobileclip_s2_text.mlmodelc ]] || ./tools/fetch_mobileclip.sh
-cp -R Resources/Models "$APP/Contents/Resources/"
+# The two "Erase an object" models (LaMa ~200 MB, MI-GAN ~27 MB); fetched once by tools/fetch_eraser.sh.
+# Only MI-GAN (the quick eraser) is bundled; LaMa is the downloadable Pro eraser.
+[[ -d Resources/Models/LaMa.mlmodelc && -d Resources/Models/MIGAN.mlmodelc ]] || ./tools/fetch_eraser.sh
+# Only small models ship inside the app. The big ones (picture understanding, Pro eraser, voice)
+# are "Orca's private AI": downloaded once from inside the app (Services/PrivateAI.swift).
+mkdir -p "$APP/Contents/Resources/Models"
+for f in MIGAN.mlmodelc clip-vocab.json clip-merges.txt LICENSE_MODELS.txt LICENSE_LAMA.txt LICENSE_MIGAN.txt; do
+  if [[ -e "Resources/Models/$f" ]]; then cp -R "Resources/Models/$f" "$APP/Contents/Resources/Models/"; fi
+done
 printf "APPL????" > "$APP/Contents/PkgInfo"
 
 echo "▸ Signing (ad-hoc)…"

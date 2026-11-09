@@ -43,7 +43,7 @@ struct PictureStage: View {
         return CGSize(width: (px.width * s).rounded(), height: (px.height * s).rounded())
     }
 
-    private var pointerTools: Set<ToolID> { [.pen, .highlighter, .arrow, .shape, .redact, .selectArea, .text, .pipette, .removeBackground, .zoom] }
+    private var pointerTools: Set<ToolID> { [.pen, .highlighter, .arrow, .shape, .redact, .selectArea, .text, .pipette, .removeBackground, .zoom, .eraseObject] }
 
     @ViewBuilder
     private func canvas(_ size: CGSize) -> some View {
@@ -84,6 +84,16 @@ struct PictureStage: View {
 
     @ViewBuilder
     private func overlays(_ size: CGSize) -> some View {
+        if ws.active == .eraseObject, !ws.eraseLive.isEmpty {
+            Path { p in
+                let pts = ws.eraseLive.map { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
+                p.move(to: pts[0]); if pts.count == 1 { p.addLine(to: CGPoint(x: pts[0].x + 0.1, y: pts[0].y)) }
+                for q in pts.dropFirst() { p.addLine(to: q) }
+            }
+            .stroke(Color(hex: 0xE5484D).opacity(ws.busy == nil ? 0.5 : 0.3),
+                    style: StrokeStyle(lineWidth: max(2, ws.eraseBrush * max(size.width, size.height)), lineCap: .round, lineJoin: .round))
+            .frame(width: size.width, height: size.height).allowsHitTesting(false)
+        }
         if let m = ws.liveMark {
             Canvas { ctx, sz in ctx.withCGContext { cg in ImageEngine.render([m], in: sz, ctx: cg) } }
                 .frame(width: size.width, height: size.height).allowsHitTesting(false)
@@ -231,6 +241,7 @@ struct PictureOptions: View {
             case .redact: redact
             case .selectArea: selectArea
             case .pipette: OptHint("Click anywhere on the picture to take its colour for the pen.")
+            case .eraseObject: erase
             case .zoom: zoomOpts
             case .copyText: copyText
             case .translate: translate
@@ -333,6 +344,45 @@ struct PictureOptions: View {
             }
             OptHint(ws.active == .highlighter ? "Drag over what matters. The colour comes from the palette below." : "Drag on the picture. Colour comes from the palette below. Each mark can be undone with ⌘Z.")
         }
+    }
+
+    private var erase: some View {
+        let ai = PrivateAI.shared
+        let bestReady = Eraser.isAvailable(.best)
+        return VStack(alignment: .leading, spacing: 9) {
+            OptTitle("Erase an object")
+            OptChoice(options: [bestReady ? "Best" : "Best ↓", "Quick"], selection: ws.eraseModel == .best ? (bestReady ? "Best" : "Best ↓") : "Quick") {
+                ws.eraseModel = $0.hasPrefix("Best") ? .best : .quick
+            }
+            if !bestReady {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles").font(.system(size: 11))
+                        Text("Unlock the Pro eraser").font(DS.bodySM)
+                    }
+                    .foregroundStyle(DS.Tone.magic.fg)
+                    Text("Removes bigger things in one stroke. Your photo never leaves this Mac. One time, \(PrivateAI.Skill.eraser.sizeLabel).")
+                        .font(DS.caption).foregroundStyle(DS.Tone.magic.fg).fixedSize(horizontal: false, vertical: true)
+                    switch ai.state(.eraser) {
+                    case .unlocking(let f): ProgressView(value: f).tint(Color(hex: 0x7A4DE6)).controlSize(.small)
+                    case .preparing: OptHint("Getting it ready…")
+                    case .failed(let m): OptHint(m); OptButton("Try again", primary: true) { ai.unlock([.eraser]) }
+                    default: OptButton("Unlock · \(PrivateAI.Skill.eraser.sizeLabel)", symbol: "arrow.down.circle", primary: true) { ai.unlock([.eraser]) }
+                    }
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 9).fill(DS.Tone.magic.bg))
+                OptHint(ws.eraseModel == .best ? "Quick works now: switch to it and paint over what should go." : "Quick works now: paint over what should go.")
+            }
+            if Eraser.isAvailable(ws.eraseModel) {
+                OptSlider(label: "Brush", value: $ws.eraseBrush, range: 0.01...0.12, format: { v in v < 0.03 ? "Small" : v < 0.07 ? "Medium" : "Large" })
+                if bestReady || ws.busy != nil {
+                    OptHint(ws.busy != nil ? "Filling it in from around it…" : "Paint over what should go, then let go. It’s filled in from around it, on this Mac. ⌘Z brings it back.")
+                }
+                OptCaption(ws.eraseModel == .best ? "Best handles big areas. Uses \(ws.eraseModel.credit)." : "Quick suits small things. Uses \(ws.eraseModel.credit).")
+            }
+        }
+        .onChange(of: ai.isUnlocked(.eraser)) { _, now in if now { ws.eraseModel = .best } }
     }
 
     private var textOpts: some View {

@@ -27,37 +27,43 @@ enum MobileCLIP {
         }
     }
 
-    /// Bundle Resources/Models in the app; when run from `.build` (debug CLI), the project's Resources/Models.
-    static let directory: URL? = {
-        let fm = FileManager.default
-        if let r = Bundle.main.resourceURL?.appendingPathComponent("Models"),
-           fm.fileExists(atPath: r.appendingPathComponent("mobileclip_s2_text.mlmodelc").path) { return r }
-        var dir = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath().deletingLastPathComponent()
-        for _ in 0..<5 {
-            let r = dir.appendingPathComponent("Resources/Models")
-            if fm.fileExists(atPath: r.appendingPathComponent("mobileclip_s2_text.mlmodelc").path) { return r }
-            dir = dir.deletingLastPathComponent()
-        }
-        return nil
-    }()
+    /// The two encoders are downloaded once ("Understands your photos" in Orca's private AI) into
+    /// Application Support; the small tokenizer files ship in the app. See PrivateAI.find.
+    static var modelsInstalled: Bool {
+        PrivateAI.find("mobileclip_s2_image.mlmodelc") != nil && PrivateAI.find("mobileclip_s2_text.mlmodelc") != nil
+    }
 
-    private static let models: Models? = {
-        guard let dir = directory else { return nil }
+    private static let loadLock = NSLock()
+    nonisolated(unsafe) private static var loaded: Models?
+    nonisolated(unsafe) private static var failedAt: Date?
+
+    /// Loaded on first use; tries again after a download (see `reload`).
+    private static var models: Models? {
+        loadLock.lock(); defer { loadLock.unlock() }
+        if let m = loaded { return m }
+        if let f = failedAt, Date().timeIntervalSince(f) < 30 { return nil }
+        guard let image = PrivateAI.find("mobileclip_s2_image.mlmodelc"), let text = PrivateAI.find("mobileclip_s2_text.mlmodelc"),
+              let vocab = PrivateAI.find("clip-vocab.json"), let merges = PrivateAI.find("clip-merges.txt") else { failedAt = Date(); return nil }
         do {
             let cfg = MLModelConfiguration()
             cfg.computeUnits = .all
-            let image = try MLModel(contentsOf: dir.appendingPathComponent("mobileclip_s2_image.mlmodelc"), configuration: cfg)
-            let text = try MLModel(contentsOf: dir.appendingPathComponent("mobileclip_s2_text.mlmodelc"), configuration: cfg)
-            let tok = try CLIPTokenizer(vocabURL: dir.appendingPathComponent("clip-vocab.json"),
-                                        mergesURL: dir.appendingPathComponent("clip-merges.txt"))
-            return try Models(image: image, text: text, tokenizer: tok)
+            let tok = try CLIPTokenizer(vocabURL: vocab, mergesURL: merges)
+            let m = try Models(image: MLModel(contentsOf: image, configuration: cfg), text: MLModel(contentsOf: text, configuration: cfg), tokenizer: tok)
+            loaded = m
+            return m
         } catch {
             NSLog("OrcaFind: MobileCLIP unavailable: \(error)")
+            failedAt = Date()
             return nil
         }
-    }()
+    }
 
-    static var isBundled: Bool { directory != nil }
+    /// After the model is downloaded or removed.
+    static func reload() {
+        loadLock.lock(); loaded = nil; failedAt = nil; loadLock.unlock()
+    }
+
+    static var isBundled: Bool { modelsInstalled }
     static var isAvailable: Bool { models != nil }
 
     /// Loads both encoders and runs each once, so the first real search doesn't pay ~0.5 s.

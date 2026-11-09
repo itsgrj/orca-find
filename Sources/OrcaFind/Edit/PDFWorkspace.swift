@@ -39,7 +39,7 @@ final class PDFWorkspace: EditWorkspace {
 
     // Undo: the document as it was before each change
     enum Change: Hashable {
-        case rotate, delete, reorder, insert, blank, crop, merge, photos, highlight, note, forms, sign, details, gray
+        case rotate, delete, reorder, insert, blank, crop, merge, photos, highlight, note, forms, sign, details, gray, scan, searchable
     }
     private struct Step { let data: Data; let change: Change; let count: Int; let gray: Bool }
     private var steps: [Step] = []
@@ -152,7 +152,6 @@ final class PDFWorkspace: EditWorkspace {
 
     func isAvailable(_ tool: ToolID) -> Bool {
         switch tool {
-        case .scanFromIPhone, .makeSearchable: return false
         default: return doc != nil
         }
     }
@@ -199,6 +198,8 @@ final class PDFWorkspace: EditWorkspace {
         case .sign: return ("signed", "signed")
         case .details: return ("details removed", "no details")
         case .gray: return ("black & white", "black & white")
+        case .scan: return ("\(Fmt.plural(n, "page")) scanned in", "scanned")
+        case .searchable: return ("\(Fmt.plural(n, "page")) made searchable", "searchable")
         }
     }
 
@@ -284,6 +285,72 @@ final class PDFWorkspace: EditWorkspace {
         return page.rotation % 180 != 0 ? box.width / box.height : box.height / box.width
     }
 
+    // MARK: Scan from iPhone and make searchable
+
+    @ObservationIgnored weak var scanReceiver: ScanReceiverView?
+    @ObservationIgnored var wantsScanMenu = false
+    private(set) var ocrPages: Int?
+    @ObservationIgnored private var ocrTask: Task<Void, Never>?
+
+    /// Pages that are only pictures (no real text).
+    var textlessPages: [Int] { locked ? [] : pages.indices.filter { PDFOCR.needsText(pages[$0]) } }
+
+    /// What an iPhone sent: a scanned PDF or a photo. Goes in after the page on screen.
+    @discardableResult
+    func receiveScan(_ pb: NSPasteboard) -> Bool {
+        guard let doc else { return false }
+        var made: [PDFPage] = []
+        if let d = pb.data(forType: .pdf), let src = PDFDocument(data: d) {
+            made = (0..<src.pageCount).compactMap { src.page(at: $0) }
+        } else if let img = NSImage(pasteboard: pb),
+                  let p = PDFEngine.imagePage(img, pageSize: doc.page(at: 0)?.bounds(for: .mediaBox).size) {
+            made = [p]
+        }
+        guard !made.isEmpty else { EditToastCenter.shared.show("Nothing came through from the iPhone"); return false }
+        push(.scan, made.count)
+        let at = doc.pageCount == 0 ? 0 : current + 1
+        for (k, p) in made.enumerated() { doc.insert(p, at: at + k) }
+        touched()
+        go(to: at)
+        EditToastCenter.shared.show("\(Fmt.plural(made.count, "page")) scanned in after page \(at)")
+        return true
+    }
+
+    func makeSearchable() {
+        guard let doc, busy == nil, !locked else { return }
+        let targets = textlessPages
+        guard !targets.isEmpty else { EditToastCenter.shared.show("Every page already has text"); return }
+        guard let data = doc.dataRepresentation() else { return }
+        let password = openPassword, startRevision = revision, total = targets.count
+        busy = "Reading page 1 of \(total)…"
+        ocrTask = Task {
+            let results = await PDFOCR.searchablePages(data: data, password: password, indices: targets) { n in
+                Task { @MainActor in if self.busy != nil { self.busy = "Reading page \(n + 1) of \(total)…" } }
+            }
+            busy = nil
+            guard revision == startRevision, let doc = self.doc else {
+                EditToastCenter.shared.show("The PDF changed while it was being read. Try again."); return
+            }
+            guard !results.isEmpty else { EditToastCenter.shared.show("No text found on those pages"); return }
+            push(.searchable, results.count)
+            for (i, pageData) in results.sorted(by: { $0.key < $1.key }) {
+                guard let made = PDFDocument(data: pageData)?.page(at: 0), let old = doc.page(at: i) else { continue }
+                made.rotation = old.rotation
+                let crop = old.bounds(for: .cropBox)
+                for a in old.annotations {
+                    old.removeAnnotation(a)
+                    a.bounds = a.bounds.offsetBy(dx: -crop.minX, dy: -crop.minY)
+                    made.addAnnotation(a)
+                }
+                doc.removePage(at: i)
+                doc.insert(made, at: i)
+            }
+            touched()
+            ocrPages = results.count
+            EditToastCenter.shared.show("\(Fmt.plural(results.count, "page")) can now be searched and copied")
+        }
+    }
+
     // MARK: Undo
 
     private func push(_ change: Change, _ count: Int = 1) {
@@ -362,6 +429,7 @@ final class PDFWorkspace: EditWorkspace {
             // Dev hook for --edit-snapshot: ORCA_PDF_FIND=word fills the search field.
             if query.isEmpty, let q = ProcessInfo.processInfo.environment["ORCA_PDF_FIND"] { query = q }
             if !query.isEmpty { scheduleFind() }
+        case .scanFromIPhone: wantsScanMenu = true; scanReceiver?.popUpIfVisible(wanted: &wantsScanMenu)
         case .pdfCopyText, .pdfTranslate: selectionText = view?.currentSelection?.string ?? ""
         case .highlight: if let s = view?.currentSelection, !(s.string ?? "").isEmpty { highlight(s) }
         default: break

@@ -90,7 +90,7 @@ private struct MenuDownloadRow: View {
 
 struct SettingsView: View {
     @Environment(AppState.self) private var state
-    enum Pane: String, CaseIterable { case general = "General", captures = "Captures", library = "Library", voice = "Search & Voice", cleanup = "Clean Up", privacy = "Privacy" }
+    enum Pane: String, CaseIterable { case general = "General", captures = "Captures", library = "Library", voice = "Search & Voice", privateAI = "Private AI", cleanup = "Clean Up", privacy = "Privacy" }
     @State private var pane: Pane = .general
 
     var body: some View {
@@ -122,6 +122,7 @@ struct SettingsView: View {
                     case .captures: CapturesSettings()
                     case .library: library
                     case .voice: voice
+                    case .privateAI: PrivateAISettings()
                     case .cleanup: cleanup
                     case .privacy: privacy
                     }
@@ -140,6 +141,7 @@ struct SettingsView: View {
         case .captures: return "viewfinder"
         case .library: return "folder"
         case .voice: return "mic"
+        case .privateAI: return "sparkles"
         case .cleanup: return "sparkles"
         case .privacy: return "lock"
         }
@@ -370,12 +372,17 @@ enum Onboarding {
 struct OnboardingView: View {
     @Environment(AppState.self) private var state
     @State private var access: [String: Bool] = [:]
+    /// Step 2: Orca's private AI (skipped when everything is already unlocked).
+    @State private var showAI = false
     private let folders = [("Desktop", "menubar.dock.rectangle"), ("Documents", "doc.text"), ("Downloads", "arrow.down.circle")]
 
     var body: some View {
         ZStack {
             AppBackground(style: .dots)
             VStack(alignment: .leading, spacing: 18) {
+              if showAI {
+                PrivateAIOnboarding { state.prefs.onboarded = true; state.focusSearch() }
+              } else {
                 Text("Welcome to Orca Find").font(DS.display).foregroundStyle(DS.text)
                 Text("Your files as big, clear cards — and a search that understands plain English, or your voice. First, let it see your folders.")
                     .font(DS.body).foregroundStyle(DS.text2).fixedSize(horizontal: false, vertical: true)
@@ -416,8 +423,13 @@ struct OnboardingView: View {
                 HStack {
                     Badge("Nothing leaves this Mac", tone: .success)
                     Spacer()
-                    Button("Start searching") { state.prefs.onboarded = true; state.focusSearch() }.buttonStyle(.primary)
+                    Button("Continue") {
+                        if PrivateAI.shared.locked.isEmpty { state.prefs.onboarded = true; state.focusSearch() }
+                        else { withAnimation(.easeOut(duration: 0.2)) { showAI = true } }
+                    }
+                    .buttonStyle(.primary)
                 }
+              }
             }
             .padding(34)
             .frame(width: 620)

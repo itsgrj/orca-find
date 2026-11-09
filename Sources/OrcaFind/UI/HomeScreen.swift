@@ -28,7 +28,7 @@ struct HomeScreen: View {
                 SearchResults()
             } else {
                 GeometryReader { geo in
-                    ScrollView { HomeExtras(width: geo.size.width - 64).padding(.horizontal, 32).padding(.top, 22).padding(.bottom, 30) }
+                    ScrollView { PrivateAIReminder().padding(.horizontal, 32).padding(.top, 22); HomeExtras(width: geo.size.width - 64).padding(.horizontal, 32).padding(.top, 22).padding(.bottom, 30) }
                 }
             }
         }

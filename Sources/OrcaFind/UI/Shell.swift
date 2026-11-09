@@ -191,6 +191,7 @@ struct TrailingBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            PrivateAIPill()
             if state.player.current != nil { MiniPlayer() }
             Menu {
                 if state.smartFolders.isEmpty { Text("No smart folders yet") }

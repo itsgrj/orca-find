@@ -187,7 +187,7 @@ enum ToolID: String, CaseIterable, Hashable {
         case .removeBackground: return "Keep the subject, drop the rest"
         case .selectArea: return "Drag a box, then crop, copy or redact it"
         case .crop: return "Shape, straighten, trim the edges"
-        case .eraseObject: return "Coming later as an add-on"
+        case .eraseObject: return "Paint over something to remove it"
         case .pen: return "Draw freehand"
         case .highlighter: return "Mark something see-through"
         case .text: return "Click to type a note"

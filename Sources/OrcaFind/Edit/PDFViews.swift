@@ -300,6 +300,8 @@ struct PDFOptions: View {
                 case .compressPDF: compress
                 case .pdfToImages: images
                 case .password: password
+                case .scanFromIPhone: PDFScanOptions(ws: ws)
+                case .makeSearchable: PDFSearchableOptions(ws: ws)
                 default: OptHint(ws.active!.hint)
                 }
             }

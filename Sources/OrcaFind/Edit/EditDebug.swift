@@ -14,6 +14,20 @@ enum EditDebug {
             let dark = args.contains("dark")
             DispatchQueue.main.async { Task { @MainActor in await snapshot(url, out: out, tool: tool, dark: dark); exit(0) } }
         }
+        if let i = args.firstIndex(of: "--private-ai-selftest"), i + 1 < args.count {
+            // ORCA_MODELS_DIR=<scratch> ORCA_NO_DEV_MODELS=1 OrcaFind --private-ai-selftest photos,eraser [image]
+            let skills = args[i + 1].split(separator: ",").compactMap { PrivateAI.Skill(rawValue: String($0)) }
+            let image = i + 2 < args.count ? URL(fileURLWithPath: args[i + 2]) : nil
+            DispatchQueue.main.async { Task { @MainActor in exit(await privateAISelfTest(skills, image: image) ? 0 : 1) } }
+        }
+        if let i = args.firstIndex(of: "--private-ai-snapshot"), i + 1 < args.count {
+            let out = URL(fileURLWithPath: args[i + 1])
+            DispatchQueue.main.async { Task { @MainActor in await privateAISnapshots(out); exit(0) } }
+        }
+        if let i = args.firstIndex(of: "--erase-selftest"), i + 2 < args.count {
+            let url = URL(fileURLWithPath: args[i + 1]), out = URL(fileURLWithPath: args[i + 2])
+            DispatchQueue.main.async { Task { @MainActor in exit(await eraseSelfTest(url, out: out) ? 0 : 1) } }
+        }
         if let i = args.firstIndex(of: "--edit-selftest"), i + 2 < args.count {
             let url = URL(fileURLWithPath: args[i + 1]), out = URL(fileURLWithPath: args[i + 2])
             DispatchQueue.main.async {
@@ -139,6 +153,115 @@ extension PictureWorkspace {
             ws.select(.crop); ws.aspect = .square; ws.select(.convert); ws.export.format = .jpeg; ws.export.maxSide = 256
         }
         await check("enhance + rotate + undo") { ws in ws.select(.enhance); ws.select(.rotate); ws.select(.flip); ws.undo() }
+        if !Eraser.available.isEmpty {
+            await check("erase an object") { ws in
+                ws.select(.eraseObject)
+                let a = CGPoint(x: 0.1, y: 0.1), b = CGPoint(x: 0.3, y: 0.15)
+                ws.beginDrag(at: a); ws.moveDrag(from: a, to: b); ws.endDrag(at: b)
+                await waitIdle(ws)
+            }
+        }
         return ok
+    }
+}
+
+extension EditDebug {
+    /// Paints two "objects" onto a photo, then erases them with each model.
+    static func eraseSelfTest(_ url: URL, out: URL) async -> Bool {
+        try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        guard let base = ImageEngine.load(url).map(ImageEngine.normalize) else { print("FAIL load"); return false }
+        print("models:", Eraser.available.map { "\($0.rawValue) \(Eraser.url($0)?.path ?? "")" })
+        let objects: [ImageEngine.Mark] = [
+            .init(kind: .text, points: [CGPoint(x: 0.08, y: 0.08)], color: .systemRed, width: 0.01, text: "SALE", fontSize: 0.11),
+            .init(kind: .pen, points: [CGPoint(x: 0.62, y: 0.78), CGPoint(x: 0.78, y: 0.86), CGPoint(x: 0.9, y: 0.8)], color: .black, width: 0.02),
+        ]
+        let dirty = ImageEngine.draw(objects, onto: base)
+        let strokes: [(points: [CGPoint], width: CGFloat)] = [
+            ([CGPoint(x: 0.07, y: 0.13), CGPoint(x: 0.38, y: 0.13)], 0.12),
+            ([CGPoint(x: 0.62, y: 0.78), CGPoint(x: 0.78, y: 0.86), CGPoint(x: 0.9, y: 0.8)], 0.06),
+        ]
+        guard let mask = Eraser.mask(strokes: strokes, size: dirty.extent.size) else { print("FAIL mask"); return false }
+        var ok = true
+        func save(_ img: CIImage, _ name: String) {
+            if let d = try? ImageEngine.encode(img, format: .jpeg, settings: .init(), source: [:]) { try? d.write(to: out.appendingPathComponent(name + ".jpg")) }
+        }
+        save(dirty, "0-with-objects")
+        for m in Eraser.available {
+            let t = Date()
+            do {
+                let r = try Eraser.erase(dirty, mask: mask, using: m)
+                save(r, "erased-" + m.file)
+                print(String(format: "ok   %@ (%@) %.2fs", m.rawValue, m.file, Date().timeIntervalSince(t)))
+            } catch { print("FAIL \(m.file): \(error.localizedDescription)"); ok = false }
+        }
+        return ok && !Eraser.available.isEmpty
+    }
+}
+
+extension EditDebug {
+    static func privateAISelfTest(_ skills: [PrivateAI.Skill], image: URL?) async -> Bool {
+        let ai = PrivateAI.shared
+        ai.rescanAfterPhotos = false
+        print("folder:", PrivateAI.folder.path)
+        for s in skills { print("before  \(s.rawValue): \(ai.state(s))") }
+        let t0 = Date()
+        ai.unlock(skills)
+        var last = -1
+        while ai.isBusy {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            let p = Int(ai.overallProgress * 100)
+            if p / 10 != last / 10 { print("  \(p)%  " + skills.map { "\($0.rawValue)=\(ai.state($0))" }.joined(separator: " ")); last = p }
+            if Date().timeIntervalSince(t0) > 1500 { print("FAIL timeout"); return false }
+        }
+        var ok = true
+        for s in skills {
+            let st = ai.state(s)
+            print(st == .unlocked ? "ok   \(s.rawValue) unlocked" : "FAIL \(s.rawValue): \(st)")
+            if st != .unlocked { ok = false }
+        }
+        print(String(format: "took %.0fs", Date().timeIntervalSince(t0)))
+        if skills.contains(.photos) {
+            MobileCLIP.reload()
+            let v = MobileCLIP.textVector("our holiday by the sea")
+            print(v != nil ? "ok   picture search model loads and encodes text (\(v!.count) numbers)" : "FAIL picture search model didn’t load"); if v == nil { ok = false }
+        }
+        if skills.contains(.eraser), let image, let img = ImageEngine.load(image).map(ImageEngine.normalize),
+           let mask = Eraser.mask(strokes: [([CGPoint(x: 0.1, y: 0.1), CGPoint(x: 0.3, y: 0.12)], 0.06)], size: img.extent.size) {
+            do { _ = try Eraser.erase(img, mask: mask, using: .best); print("ok   Pro eraser runs from the downloaded copy: \(Eraser.url(.best)?.path ?? "")") }
+            catch { print("FAIL Pro eraser: \(error.localizedDescription)"); ok = false }
+        }
+        return ok
+    }
+}
+
+extension EditDebug {
+    static func privateAISnapshots(_ out: URL) async {
+        FontLoader.register()
+        try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 800), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.setFrameOrigin(NSPoint(x: -4000, y: -4000))
+        func shot<V: View>(_ v: V, _ size: NSSize, _ name: String, dark: Bool = false) async {
+            let host = NSHostingView(rootView: v.environment(AppState.shared).frame(width: size.width, height: size.height))
+            host.frame = NSRect(origin: .zero, size: size)
+            host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            window.setContentSize(size); window.contentView = host; window.orderFront(nil)
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            host.layoutSubtreeIfNeeded()
+            if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+                host.cacheDisplay(in: host.bounds, to: rep)
+                try? rep.representation(using: .png, properties: [:])?.write(to: out.appendingPathComponent(name + ".png"))
+            }
+        }
+        let card = { (v: AnyView) in
+            ZStack { DS.app; v.padding(34).frame(width: 620).background(RoundedRectangle(cornerRadius: 20).fill(DS.surface)).shadow(color: .black.opacity(0.16), radius: 30, y: 16) }
+        }
+        await shot(card(AnyView(PrivateAIOnboarding {})), NSSize(width: 760, height: 820), "1-onboarding")
+        await shot(ZStack { DS.app; PrivateAIReminder().padding(30) }, NSSize(width: 1100, height: 160), "3-home-reminder")
+        await shot(ScrollView { PrivateAISettings().padding(24) }.background(DS.surface), NSSize(width: 660, height: 640), "4-settings")
+        PrivateAI.shared.debugShow(.photos, .unlocked)
+        PrivateAI.shared.debugShow(.eraser, .unlocking(0.48))
+        await shot(HStack { Spacer(); PrivateAIPill().padding(10) }.background(DS.topbar), NSSize(width: 360, height: 50), "2-pill")
+        await shot(ScrollView { PrivateAISettings().padding(24) }.background(DS.surface), NSSize(width: 660, height: 640), "5-settings-unlocking", dark: true)
+        print("snapshots in \(out.path)")
     }
 }

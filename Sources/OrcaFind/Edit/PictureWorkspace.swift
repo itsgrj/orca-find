@@ -54,6 +54,11 @@ final class PictureWorkspace: EditWorkspace {
     var redactBlock: Double = 12
     var zoom: Double = 1
 
+    // Erase an object
+    var eraseModel: Eraser.Model = Eraser.available.first ?? .best
+    var eraseBrush: Double = 0.045
+    private(set) var eraseLive: [CGPoint] = []
+
     // Saving
     var export = ImageEngine.ExportSettings() { didSet { exportTouched = true; scheduleEstimate() } }
     private(set) var exportTouched = false
@@ -104,7 +109,7 @@ final class PictureWorkspace: EditWorkspace {
         }
     }
 
-    func isAvailable(_ tool: ToolID) -> Bool { tool != .eraseObject && original != nil }
+    func isAvailable(_ tool: ToolID) -> Bool { original != nil && (tool != .eraseObject || !Eraser.available.isEmpty) }
 
     // MARK: State
 
@@ -431,6 +436,7 @@ final class PictureWorkspace: EditWorkspace {
     // MARK: Drawing on the picture (each stroke is applied straight away, like Paint)
 
     func beginDrag(at p: CGPoint) {
+        if active == .eraseObject { if busy == nil { eraseLive = [p] }; return }
         switch active {
         case .pen, .highlighter: liveMark = ImageEngine.Mark(kind: active == .pen ? .pen : .highlighter, points: [p], color: penColor, width: penWidth)
         case .arrow: liveMark = ImageEngine.Mark(kind: .arrow, points: [p, p], color: penColor, width: penWidth)
@@ -442,6 +448,7 @@ final class PictureWorkspace: EditWorkspace {
 
     func moveDrag(from start: CGPoint, to p: CGPoint) {
         let p = CGPoint(x: min(max(p.x, 0), 1), y: min(max(p.y, 0), 1))
+        if active == .eraseObject { if !eraseLive.isEmpty { eraseLive.append(p) }; return }
         switch active {
         case .pen, .highlighter: liveMark?.points.append(p)
         case .arrow, .shape: if liveMark != nil { liveMark!.points[1] = p }
@@ -451,6 +458,7 @@ final class PictureWorkspace: EditWorkspace {
     }
 
     func endDrag(at p: CGPoint) {
+        if active == .eraseObject { runErase(); return }
         switch active {
         case .pen, .highlighter, .arrow, .shape:
             if let m = liveMark {
@@ -483,6 +491,38 @@ final class PictureWorkspace: EditWorkspace {
         guard !t.isEmpty else { return }
         let m = ImageEngine.Mark(kind: .text, points: [d.point], color: penColor, width: penWidth, text: t, fontSize: textSize)
         apply("marked up") { ImageEngine.draw([m], onto: $0) }
+    }
+
+    // MARK: Erase an object
+
+    private func runErase() {
+        let stroke = eraseLive
+        if !Eraser.isAvailable(eraseModel) {
+            eraseLive = []
+            EditToastCenter.shared.show(eraseModel == .best ? "Unlock the Pro eraser first, or switch to Quick" : "The eraser isn’t installed")
+            return
+        }
+        guard !stroke.isEmpty, busy == nil, let w = working,
+              let mask = Eraser.mask(strokes: [(stroke, CGFloat(eraseBrush))], size: w.extent.size) else { eraseLive = []; return }
+        let model = eraseModel
+        busy = "Erasing…"
+        Task {
+            do {
+                let flat = try await Task.detached(priority: .userInitiated) { [w] () -> CIImage in
+                    let r = try Eraser.erase(w, mask: mask, using: model)
+                    // Flatten so later edits don't run the model's recipe again.
+                    guard let cg = ImageEngine.cgImage(r) else { throw EditError.message("Couldn’t draw the result") }
+                    return CIImage(cgImage: cg)
+                }.value
+                push("erased")
+                working = flat
+                refresh()
+            } catch {
+                EditToastCenter.shared.show("Couldn’t erase: \(error.localizedDescription)")
+            }
+            eraseLive = []
+            busy = nil
+        }
     }
 
     // MARK: Text
