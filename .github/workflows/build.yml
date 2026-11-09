@@ -1,0 +1,25 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "website/**", "**.md"]
+  pull_request:
+    paths-ignore: ["docs/**", "website/**", "**.md"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compile on macOS
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: swift --version
+      - name: Cache Swift packages
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+      - name: Build release
+        run: swift build -c release

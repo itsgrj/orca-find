@@ -9,3 +9,10 @@ Resources/Models/
 
 # macOS
 .DS_Store
+
+# Website working files (not published)
+website/_dev/
+
+# Release archives
+*.bundle
+*.zip

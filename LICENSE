@@ -1,0 +1,57 @@
+Orca Find
+Copyright (c) 2026 Gokul. All rights reserved.
+
+This repository is published so that people can read the source code and
+build Orca Find for their own personal use on their own Mac.
+
+No other licence is granted. Without written permission from the copyright
+holder, you may not copy, modify, merge, publish, distribute, sublicense or
+sell this software or any part of it, or use it in another product or
+service, whether commercial or not.
+
+Reporting issues and suggesting changes through GitHub is welcome. Opening a
+pull request does not grant you any rights in this software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
+THIRD-PARTY COMPONENTS
+======================
+
+These parts are not covered by the notice above. Each keeps its own licence.
+
+FluidAudio (Swift package dependency)
+  https://github.com/FluidInference/FluidAudio
+  Apache License 2.0
+
+NVIDIA Parakeet TDT 0.6B v2 (optional download, not in this repository)
+  https://huggingface.co/nvidia/parakeet-tdt-0.6b-v2
+  Creative Commons Attribution 4.0 International (CC BY 4.0)
+
+Apple MobileCLIP-S2 (optional download, not in this repository)
+  https://github.com/apple/ml-mobileclip
+  Apple Machine Learning Research Model License, which limits the model to
+  non-commercial research use
+
+LaMa (optional download, not in this repository)
+  https://github.com/advimman/lama
+  Apache License 2.0. Core ML conversion by john-rocky. The weights were
+  trained on Places2, whose terms are non-commercial.
+
+MI-GAN (bundled in release builds, not in this repository)
+  https://github.com/Picsart-AI-Research/MI-GAN
+  MIT License. The weights were trained on Places2, whose terms are
+  non-commercial.
+
+CLIP tokenizer files (vocab.json, merges.txt)
+  https://github.com/openai/CLIP
+  MIT License
+
+Geist Pixel font (Resources/Fonts)
+  https://vercel.com/font
+  SIL Open Font License 1.1
