@@ -31,6 +31,8 @@ struct HotKeyCombo: Codable, Equatable {
 
     static let defaultQuickSearch = HotKeyCombo(keyCode: UInt32(kVK_Space),
                                                 modifiers: NSEvent.ModifierFlags([.command, .shift]).rawValue)
+    static let defaultCapture = HotKeyCombo(keyCode: UInt32(kVK_Space),
+                                            modifiers: NSEvent.ModifierFlags([.option, .shift]).rawValue)
 
     var flags: NSEvent.ModifierFlags { NSEvent.ModifierFlags(rawValue: modifiers) }
 
@@ -97,6 +99,24 @@ final class Preferences {
             HotKeyCenter.shared.register(quickSearchHotKey)
         }
     }
+    /// Smart captures: grab part of the screen, then say why.
+    var capturesEnabled: Bool {
+        didSet {
+            d.set(capturesEnabled, forKey: "capturesEnabled")
+            if capturesEnabled { HotKeyCenter.shared.register(captureHotKey, slot: .capture) }
+            else { HotKeyCenter.shared.unregister(.capture) }
+        }
+    }
+    var captureHotKey: HotKeyCombo {
+        didSet {
+            if let data = try? JSONEncoder().encode(captureHotKey) { d.set(data, forKey: "captureHotKey") }
+            if capturesEnabled { HotKeyCenter.shared.register(captureHotKey, slot: .capture) }
+        }
+    }
+    /// Keep a short video when what was grabbed is moving.
+    var captureClips: Bool { didSet { d.set(captureClips, forKey: "captureClips") } }
+    /// Let Apple Intelligence add one or two tags from the words and the picture.
+    var captureAutoTags: Bool { didSet { d.set(captureAutoTags, forKey: "captureAutoTags") } }
     var cardSize: Double { didSet { d.set(cardSize, forKey: "cardSize") } }
     var viewMode: ViewMode { didSet { d.set(viewMode.rawValue, forKey: "viewMode") } }
     var ocrEnabled: Bool { didSet { d.set(ocrEnabled, forKey: "ocrEnabled") } }
@@ -155,6 +175,14 @@ final class Preferences {
         } else {
             quickSearchHotKey = .defaultQuickSearch
         }
+        capturesEnabled = d.object(forKey: "capturesEnabled") as? Bool ?? true
+        if let data = d.data(forKey: "captureHotKey"), let combo = try? JSONDecoder().decode(HotKeyCombo.self, from: data) {
+            captureHotKey = combo
+        } else {
+            captureHotKey = .defaultCapture
+        }
+        captureClips = d.object(forKey: "captureClips") as? Bool ?? true
+        captureAutoTags = d.object(forKey: "captureAutoTags") as? Bool ?? true
         cardSize = d.object(forKey: "cardSize") as? Double ?? 168
         viewMode = ViewMode(rawValue: d.string(forKey: "viewMode") ?? "") ?? .grid
         ocrEnabled = d.object(forKey: "ocrEnabled") as? Bool ?? true

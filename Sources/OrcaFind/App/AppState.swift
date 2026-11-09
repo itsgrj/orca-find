@@ -6,20 +6,22 @@ enum AppSection: Hashable {
     case downloadedFrom(String?)
     case duplicates, cleanUp, cleanUpReview(CleanupKind)
     case smartFolder(UUID), folder(String), search
+    case captures, capture(String)
 
     var isBrowser: Bool {
         switch self {
-        case .home, .library, .duplicates, .cleanUp, .cleanUpReview: return false
+        case .home, .library, .duplicates, .cleanUp, .cleanUpReview, .captures, .capture: return false
         default: return true
         }
     }
 
-    enum Tab: String, CaseIterable { case home = "Home", library = "Library", downloads = "Downloads", tidy = "Tidy" }
+    enum Tab: String, CaseIterable { case home = "Home", captures = "Captures", library = "Library", downloads = "Downloads", tidy = "Tidy" }
 
     var tab: Tab {
         switch self {
         case .home, .search: return .home
         case .downloadedFrom: return .downloads
+        case .captures, .capture: return .captures
         case .cleanUp, .cleanUpReview, .duplicates: return .tidy
         default: return .library
         }
@@ -208,6 +210,11 @@ final class AppState {
     var scrollTarget: String?
     var gridColumns = 4
     var toast: Toast?
+    /// What's typed in the top bar while on Captures (filters captures instead of files).
+    var capturesQuery = ""
+    /// Which folder of the Captures tab is open (nil = the folders) and which tag narrows it.
+    var capturesFolder: CaptureFolder?
+    var capturesTag: String?
     var folderSheet: FolderDraft?
     var renamingFolder: SmartFolder?
     var deletingFolder: SmartFolder?
@@ -417,7 +424,7 @@ final class AppState {
 
     func focusSearch() {
         openMainWindow()
-        if section.tab != .home { navigate(.home) }
+        if section.tab != .home && section.tab != .captures { navigate(.home) }
         focusSearchToken += 1
     }
 
@@ -955,6 +962,8 @@ final class AppState {
         case .smartFolder(let id): return folder(id)?.name ?? "Smart folder"
         case .folder(let p): return FileManager.default.displayName(atPath: p)
         case .search: return "Results"
+        case .captures: return "Captures"
+        case .capture(let id): return CaptureLibrary.shared.capture(id)?.title ?? "Capture"
         }
     }
 
@@ -972,6 +981,7 @@ final class AppState {
         case .smartFolder: return "folder.badge.gearshape"
         case .folder: return "folder"
         case .search: return "magnifyingglass"
+        case .captures, .capture: return "viewfinder"
         }
     }
 }

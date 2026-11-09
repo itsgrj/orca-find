@@ -52,7 +52,13 @@
 	<key>NSDownloadsFolderUsageDescription</key>
 	<string>Orca Find shows and searches your Downloads, and tells you where each one came from. Nothing leaves your Mac.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Orca Find listens only while voice search is on, so you can find files by speaking.</string>
+	<string>Orca listens only while you search by voice or right after you grab something, so you can say why you saved it.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>When you say “remind me…” while capturing, Orca adds it to Apple Reminders with a link back to the capture.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>When you say “remind me…” while capturing, Orca adds it to Apple Reminders with a link back to the capture.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Orca asks your browser for the page you’re looking at, so each capture keeps its link.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Orca Find turns your spoken search into text, on your Mac whenever possible.</string>
 </dict>

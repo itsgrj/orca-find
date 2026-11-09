@@ -1,0 +1,1484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Orca Find</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Find any file on your Mac by asking for it. Orca Find reads file names, the text inside files and screenshots, and where every download came from.">
+<link rel="icon" href="assets/app-icon-64.png">
+<style>
+/* Layout: a night-ocean hero that folds into a working demo window, then calm full-width bands on near-black, every visual a real Orca Find screen. */
+@font-face {
+  font-family: "Geist Pixel";
+  src: url("assets/GeistPixel-Square.woff2") format("woff2");
+  font-display: swap;
+}
+:root {
+  /* dark-first (Orca night) */
+  --bg: #06080c;
+  --bg-2: #0b0e14;
+  --surface: #12161d;
+  --surface-2: #1b1f26;
+  --surface-3: #232832;
+  --border: rgba(255,255,255,.08);
+  --border-strong: #2c313b;
+  --text: #e9eaec;
+  --text-2: #9aa1ac;
+  --text-3: #6e7580;
+  --brand: #f1f1f1;
+  --on-brand: #1a1a1a;
+  --focus: #2e7bea;
+  --link: #5aa2ff;
+  --magic-bg: #2c1c55; --magic-fg: #c6a8ff;
+  --emph-bg: #1f2752; --emph-fg: #afb9ff;
+  --info-bg: #10304a; --info-fg: #8ccbff;
+  --success-bg: #0e3a27; --success-fg: #7fe0b0;
+  --attn-bg: #3d2a10; --attn-fg: #ffce7a;
+  --crit-bg: #45141a; --crit-fg: #ff9aa5;
+  --topbar: #1a1a1a;
+  --dot: rgba(154,176,220,.10);
+  --shot-ring: rgba(255,255,255,.10);
+  /* hero sky */
+  --sky-1: #02060f; --sky-2: #071634; --sky-3: #123a73; --sky-4: #3d5f9c; --sky-5: #8c86b8;
+  --hero-fg: #f4f6fb; --hero-fg-2: rgba(226,232,246,.68);
+  --sea: 157,187,255;
+  --orca: #010205;
+  --orca-glow: rgba(120,160,255,.38);
+  --star: 220,230,255;
+  --btn2-bg: #05070b; --btn2-fg: #f1f1f1; --btn2-border: rgba(255,255,255,.16);
+  --band-1: #050914; --band-2: #0d2252; --band-3: #4b4f97; --band-4: #b88bb8;
+  /* type */
+  --font: "Geist Pixel", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* motion (emil-design-eng): strong custom curves, never ease-in on UI */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --press: 160ms;
+  --gutter: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  --wrap: 1180px;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f1f1f1; --bg-2: #ebebeb; --surface: #ffffff; --surface-2: #f7f7f7; --surface-3: #ececec;
+    --border: #e3e3e3; --border-strong: #cccccc; --text: #303030; --text-2: #616161; --text-3: #8a8a8a;
+    --brand: #303030; --on-brand: #ffffff; --focus: #2e7bea; --link: #005bd3;
+    --magic-bg: #f3eeff; --magic-fg: #5700d1; --emph-bg: #f0f2ff; --emph-fg: #2e3a86;
+    --info-bg: #eaf4ff; --info-fg: #00527c; --success-bg: #cdfee1; --success-fg: #0c5132;
+    --attn-bg: #fff1e3; --attn-fg: #5e4200; --crit-bg: #fee9e8; --crit-fg: #8e0b21;
+    --dot: rgba(46,70,140,.10); --shot-ring: rgba(0,0,0,.08);
+    --sky-1: #a9c2ee; --sky-2: #c4d6f6; --sky-3: #dfe8fa; --sky-4: #eef0f8; --sky-5: #f6e6ee;
+    --hero-fg: #0d1630; --hero-fg-2: rgba(13,22,48,.66);
+    --sea: 36,78,190; --orca: #03060d; --orca-glow: rgba(30,60,140,.16); --star: 40,70,150;
+    --btn2-bg: #ffffff; --btn2-fg: #303030; --btn2-border: #d6dbe6;
+    --band-1: #dbe6fb; --band-2: #c3d4f6; --band-3: #d9d3f1; --band-4: #f5dde8;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f1f1f1; --bg-2: #ebebeb; --surface: #ffffff; --surface-2: #f7f7f7; --surface-3: #ececec;
+  --border: #e3e3e3; --border-strong: #cccccc; --text: #303030; --text-2: #616161; --text-3: #8a8a8a;
+  --brand: #303030; --on-brand: #ffffff; --focus: #2e7bea; --link: #005bd3;
+  --magic-bg: #f3eeff; --magic-fg: #5700d1; --emph-bg: #f0f2ff; --emph-fg: #2e3a86;
+  --info-bg: #eaf4ff; --info-fg: #00527c; --success-bg: #cdfee1; --success-fg: #0c5132;
+  --attn-bg: #fff1e3; --attn-fg: #5e4200; --crit-bg: #fee9e8; --crit-fg: #8e0b21;
+  --dot: rgba(46,70,140,.10); --shot-ring: rgba(0,0,0,.08);
+  --sky-1: #a9c2ee; --sky-2: #c4d6f6; --sky-3: #dfe8fa; --sky-4: #eef0f8; --sky-5: #f6e6ee;
+  --hero-fg: #0d1630; --hero-fg-2: rgba(13,22,48,.66);
+  --sea: 36,78,190; --orca: #03060d; --orca-glow: rgba(30,60,140,.16); --star: 40,70,150;
+  --btn2-bg: #ffffff; --btn2-fg: #303030; --btn2-border: #d6dbe6;
+  --band-1: #dbe6fb; --band-2: #c3d4f6; --band-3: #d9d3f1; --band-4: #f5dde8;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 15px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased; overflow-x: clip;
+  -webkit-tap-highlight-color: transparent;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: var(--bg); }
+a { color: inherit; }
+button { font: inherit; color: inherit; }
+img { display: block; max-width: 100%; height: auto; }
+h1, h2, h3 { font-weight: 400; margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+p { margin: 0; }
+.wrap { max-width: var(--wrap); margin: 0 auto; padding-left: var(--gutter); padding-right: var(--gutter-r); }
+.eyebrow { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.px-icon { display: inline-block; width: 1em; height: 1em; flex: none; vertical-align: -0.12em; }
+.px-icon svg { display: block; width: 100%; height: 100%; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 6px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Anything pressable confirms the press (scale .97, 160ms, ease-out). */
+.press { transition: transform var(--press) var(--ease-out); }
+.press:active { transform: scale(.97); }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; gap: 10px; height: 44px; padding: 0 18px;
+  border-radius: 10px; border: 1px solid transparent; text-decoration: none; cursor: pointer;
+  font-size: 15px; white-space: nowrap; user-select: none;
+  transition: transform var(--press) var(--ease-out), box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease;
+}
+.btn:active { transform: scale(.97); }
+.btn-primary { background: var(--brand); color: var(--on-brand); box-shadow: 0 1px 0 rgba(0,0,0,.25), 0 8px 24px rgba(0,0,0,.18); }
+.btn-dark { background: var(--btn2-bg); color: var(--btn2-fg); border-color: var(--btn2-border); }
+.btn-ghost { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+.btn .px-icon { width: 15px; height: 15px; }
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:hover { box-shadow: 0 1px 0 rgba(0,0,0,.25), 0 12px 32px rgba(0,0,0,.3); }
+  .btn-dark:hover, .btn-ghost:hover { border-color: var(--text-3); }
+}
+
+/* ---------- Header ---------- */
+.site-head { position: fixed; z-index: 50; top: env(safe-area-inset-top, 0px); left: 0; right: 0; pointer-events: none;
+  padding: 14px var(--gutter-r) 0 var(--gutter); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+.site-head > * { pointer-events: auto; }
+.logo { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; color: var(--hero-fg); font-size: 17px; justify-self: start; transition: color 300ms ease; }
+.logo img { width: 28px; height: 28px; }
+body.past-hero .logo { color: var(--text); }
+.pill-nav { justify-self: center; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-2) 82%, transparent); border: 1px solid var(--border);
+  backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%);
+  opacity: 0; transform: translateY(-8px); transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out); }
+body.nav-on .pill-nav { opacity: 1; transform: none; }
+body:not(.nav-on) .pill-nav { pointer-events: none; }
+.pill-nav a { text-decoration: none; font-size: 13px; color: var(--text-2); padding: 6px 12px; border-radius: 999px; transition: color 150ms ease, background-color 150ms ease; }
+.pill-nav a.on { color: var(--text); background: var(--surface-3); }
+.pill-nav a.dl { background: var(--brand); color: var(--on-brand); display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; }
+.pill-nav a.dl .px-icon { width: 12px; height: 12px; }
+@media (hover: hover) and (pointer: fine) { .pill-nav a:not(.dl):hover { color: var(--text); } }
+.theme-toggle { justify-self: end; display: flex; gap: 2px; padding: 3px; border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-2) 70%, transparent); border: 1px solid var(--border);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.theme-toggle button { width: 28px; height: 28px; border: 0; border-radius: 999px; background: transparent; color: var(--text-3); cursor: pointer; display: grid; place-items: center; }
+.theme-toggle button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
+.theme-toggle .px-icon { width: 13px; height: 13px; }
+@media (hover: hover) and (pointer: fine) { .theme-toggle button:hover { color: var(--text); } }
+
+/* ---------- Hero ---------- */
+.hero { position: relative; height: 330vh; height: 330svh; }
+.stage { position: sticky; top: 0; height: 100vh; height: 100svh; overflow: hidden; background: var(--bg); }
+.scene { position: absolute; inset: 0; overflow: hidden; contain: paint;
+  background: linear-gradient(180deg, var(--sky-1) 0%, var(--sky-2) 26%, var(--sky-3) 58%, var(--sky-4) 82%, var(--sky-5) 100%); }
+.scene::after { /* faint dot-matrix over the sky, like the app background */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 1.4px); background-size: 8px 8px;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 70%); mask-image: linear-gradient(180deg, transparent 0%, #000 70%); }
+#sky { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+.laptop-wrap { position: absolute; right: -9vw; bottom: -12vh; width: 30vw; height: 74vh; pointer-events: none; will-change: transform; }
+.laptop { position: absolute; inset: 0; transform: perspective(1300px) rotateY(-36deg) rotateZ(3deg); transform-origin: right bottom;
+  border-radius: 22px; background: #070b14; box-shadow: -30px 30px 80px rgba(0,0,0,.45); }
+.laptop .screen { position: absolute; inset: 12px 10px 12px 14px; border-radius: 12px; overflow: hidden;
+  background: linear-gradient(170deg, #0a1328 0%, #142a57 45%, #3b5a99 100%); }
+.laptop .screen::before { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, rgba(255,255,255,.12) 0%, transparent 28%); }
+.laptop .ghost-search { position: absolute; left: 12%; top: 30%; width: 120%; height: 46px; border-radius: 12px;
+  background: rgba(255,255,255,.07); border: 1px solid rgba(140,180,255,.35); box-shadow: 0 0 40px rgba(90,150,255,.25);
+  display: flex; align-items: center; gap: 10px; padding: 0 14px; color: rgba(220,232,255,.75); font-size: 14px; white-space: nowrap; }
+.laptop .ghost-search i { width: 2px; height: 18px; background: #8fb4ff; animation: blink 1s steps(2) infinite; }
+.laptop .ghost-rows { position: absolute; left: 12%; top: 46%; display: grid; grid-template-columns: repeat(3, 70px); gap: 10px; opacity: .55; }
+.laptop .ghost-rows span { height: 56px; border-radius: 9px; background: rgba(160,190,255,.16); }
+
+.hero-copy { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; text-align: center; gap: 22px;
+  padding: 0 var(--gutter-r) 8vh var(--gutter); color: var(--hero-fg); will-change: opacity, transform; }
+.hero-copy h1 { font-size: clamp(44px, 7.4vw, 104px); line-height: .98; letter-spacing: -0.035em; }
+.hero-copy h1 span { display: block; }
+.hero-ctas { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+.hero-note { font-size: 13px; color: var(--hero-fg-2); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.hero-note .px-icon { width: 10px; height: 10px; }
+.hero-sub { font-size: 16px; line-height: 1.55; max-width: 34em; color: var(--hero-fg-2); margin-top: 6px; }
+.hero-sub b { font-weight: 400; color: var(--hero-fg); display: block; }
+.scroll-hint { position: absolute; left: 50%; bottom: calc(26px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  display: grid; justify-items: center; gap: 6px; font-size: 12px; color: var(--hero-fg-2); }
+.scroll-hint .px-icon { width: 12px; height: 12px; animation: nudge 1.8s var(--ease-in-out) infinite; }
+
+/* One orchestrated entrance: the orca leads (canvas), headline lines follow 80ms apart, then the actions, then the small print. */
+.intro { animation: intro-up 800ms var(--ease-out) both; animation-delay: calc(var(--d, 0) * 1ms); }
+@keyframes intro-up { from { opacity: 0; transform: translateY(14px); filter: blur(6px); } }
+.laptop.intro { animation-name: intro-slide; animation-duration: 1100ms; }
+@keyframes intro-slide { from { opacity: 0; transform: translateX(10vw) perspective(1300px) rotateY(-36deg) rotateZ(3deg); } }
+
+.hero-ready { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 16px; text-align: center;
+  color: var(--hero-fg); opacity: 0; pointer-events: none; will-change: opacity, transform; }
+.hero-ready.live { pointer-events: auto; }
+.hero-ready h2 { font-size: clamp(22px, 2.4vw, 30px); }
+.play-btn { display: inline-flex; align-items: center; gap: 10px; height: 40px; padding: 0 16px 0 6px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.12); color: var(--hero-fg); backdrop-filter: blur(8px); font-size: 14px;
+  transition: transform var(--press) var(--ease-out), background-color 200ms ease; }
+.play-btn:active { transform: scale(.97); }
+.play-btn span { width: 28px; height: 28px; border-radius: 999px; background: rgba(255,255,255,.22); display: grid; place-items: center; }
+.play-btn .px-icon { width: 11px; height: 11px; }
+
+/* ---------- Demo window (fixed design size, scaled to fit the card) ---------- */
+.demo-wrap { position: absolute; left: 50%; top: 50%; width: 1120px; height: 760px; margin: -380px 0 0 -560px; pointer-events: none; opacity: 0; transform-origin: center; will-change: opacity, transform; }
+.demo-wrap.live { pointer-events: auto; }
+.win { position: relative; width: 1120px; height: 690px; border-radius: 16px; overflow: hidden; background: var(--bg-2);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 40px 120px rgba(2,6,20,.55), 0 10px 30px rgba(2,6,20,.35); }
+.win-bar { height: 52px; background: var(--topbar); display: flex; align-items: center; gap: 18px; padding: 0 18px; color: #e3e3e3; font-size: 15px; }
+.lights { display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+.win-brand { display: flex; align-items: center; gap: 8px; font-size: 17px; }
+.win-brand .px-icon { width: 15px; height: 15px; }
+.win-tabs { display: flex; gap: 4px; font-size: 14px; color: #8a8a8a; }
+.win-tabs span { padding: 5px 12px; border-radius: 8px; }
+.win-tabs span.on { background: #303030; color: #f1f1f1; }
+.win-tools { margin-left: auto; display: flex; gap: 16px; color: #8a8a8a; }
+.win-tools .px-icon { width: 15px; height: 15px; }
+.win-body { position: absolute; inset: 52px 0 0 0; background: var(--bg-2);
+  background-image: radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 1.5px); background-size: 10px 10px; }
+.d-home { position: absolute; inset: 0; display: grid; justify-items: center; align-content: start; padding-top: 70px; gap: 10px;
+  transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out); }
+.d-home h3 { font-size: 40px; letter-spacing: -0.02em; }
+.d-home p { color: var(--text-2); font-size: 14px; }
+.win.searching .d-home { opacity: 0; transform: translateY(-12px); pointer-events: none; }
+.d-search { position: absolute; left: 26px; right: 26px; top: 196px; border-radius: 18px; background: var(--surface);
+  border: 1px solid var(--border); box-shadow: 0 8px 30px rgba(0,0,0,.18);
+  transition: transform 500ms var(--ease-in-out), box-shadow 200ms ease, border-color 200ms ease; }
+.win.searching .d-search { transform: translateY(-178px); }
+.win.focused .d-search { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 25%, transparent), 0 8px 30px rgba(0,0,0,.18); }
+.d-field { height: 66px; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 22px; font-size: 21px; }
+.d-field > .px-icon { width: 20px; height: 20px; color: var(--text-2); }
+.d-q { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; }
+.d-q .ph { color: var(--text-3); }
+.caret { display: inline-block; width: 2px; height: 22px; background: var(--focus); vertical-align: -4px; margin-left: 2px; animation: blink 1s steps(2) infinite; }
+.d-q .listening { color: var(--magic-fg); }
+.kbd { font-size: 12px; color: var(--text-2); border: 1px solid var(--border-strong); border-radius: 5px; padding: 1px 6px; white-space: nowrap; }
+.d-mic { width: 46px; height: 46px; border-radius: 50%; background: var(--brand); color: var(--on-brand); display: grid; place-items: center; position: relative; flex: none;
+  transition: background-color 200ms ease, color 200ms ease; }
+.d-mic .px-icon { width: 18px; height: 18px; }
+.d-mic::before, .d-mic::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--focus); opacity: 0; }
+.win.voice .d-mic { background: var(--focus); color: #fff; }
+.win.voice .d-mic::before { animation: ring 1.4s var(--ease-out) infinite; }
+.win.voice .d-mic::after { animation: ring 1.4s .7s var(--ease-out) infinite; }
+.wave { display: inline-flex; gap: 3px; align-items: center; height: 22px; vertical-align: -5px; margin-right: 10px; }
+.wave i { width: 4px; height: 20px; background: var(--magic-fg); transform-origin: center; animation: wave .9s var(--ease-in-out) infinite; }
+.wave i:nth-child(2) { animation-delay: .1s } .wave i:nth-child(3) { animation-delay: .2s } .wave i:nth-child(4) { animation-delay: .3s } .wave i:nth-child(5) { animation-delay: .4s }
+.d-under { border-top: 1px solid var(--border); padding: 14px 22px 16px; display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; overflow: hidden; min-height: 60px; }
+.d-under .eyebrow { margin-right: 6px; font-size: 11px; white-space: nowrap; }
+.chip { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px; border-radius: 8px; font-size: 13.5px; white-space: nowrap; flex: none;
+  background: var(--emph-bg); color: var(--emph-fg); }
+.chip .px-icon { width: 12px; height: 12px; }
+.chip .x { opacity: .7; width: 8px; height: 8px; }
+.chip.magic { background: var(--magic-bg); color: var(--magic-fg); }
+.chip.plain { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+.chip.save { margin-left: auto; }
+/* chips arrive once per search, so a keyframe is fine; small scale, never from 0 */
+.chip.pop { animation: chip-in 240ms var(--ease-out) both; }
+@keyframes chip-in { from { opacity: 0; transform: scale(.94) translateY(3px); } }
+.try { display: flex; gap: 8px; }
+.d-results { position: absolute; left: 26px; right: 26px; top: 176px; bottom: 20px; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px;
+  opacity: 0; transition: opacity 250ms var(--ease-out); }
+.win.has-results .d-results { opacity: 1; }
+.d-rhead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; }
+.d-rhead strong { font-weight: 400; font-size: 22px; }
+.d-rhead span { color: var(--text-2); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.d-results > div { min-width: 0; }
+.fcard { border-radius: 14px; background: var(--surface); border: 1px solid var(--border); padding: 8px;
+  opacity: 0; transform: translateY(10px); transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out), box-shadow 200ms ease; }
+.fcard.in { opacity: 1; transform: none; }
+.fcard.dim { opacity: .55; }
+.fcard.best { box-shadow: 0 0 0 2px var(--focus), 0 14px 34px rgba(0,0,0,.25); }
+.thumb { position: relative; aspect-ratio: 4 / 3.2; border-radius: 9px; overflow: hidden; background: var(--surface-3); }
+.thumb .tag { position: absolute; left: 8px; top: 8px; font-size: 11px; padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,.92); color: #303030; }
+.thumb .src { position: absolute; right: 8px; top: 8px; font-size: 11px; padding: 2px 7px; border-radius: 6px; color: #fff; }
+.fname { font-size: 13px; margin: 9px 4px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fmeta { font-size: 11.5px; color: var(--text-3); margin: 2px 4px 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.why { margin: 8px 2px 2px; display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; padding: 3px 8px; border-radius: 7px; background: var(--magic-bg); color: var(--magic-fg); max-width: 100%; white-space: nowrap; overflow: hidden; }
+.why .px-icon { width: 10px; height: 10px; }
+/* inspector: slides in from the edge it lives on */
+.insp { border-radius: 16px; background: var(--surface); border: 1px solid var(--border); padding: 12px; display: grid; gap: 10px; align-content: start; overflow: hidden;
+  opacity: 0; transform: translateX(14px); transition: opacity 300ms var(--ease-out), transform 300ms var(--ease-out); }
+.win.inspect .insp { opacity: 1; transform: none; }
+.insp .pv { position: relative; height: 150px; border-radius: 10px; overflow: hidden; background: var(--surface-3); }
+.insp .nm { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.insp .mt { font-size: 11.5px; color: var(--text-3); margin-top: -6px; }
+.insp .acts { display: flex; gap: 6px; }
+.insp .acts span { font-size: 11.5px; padding: 4px 9px; border-radius: 7px; border: 1px solid var(--border-strong); }
+.insp .acts span:first-child { background: var(--brand); color: var(--on-brand); border-color: transparent; }
+.insp h4 { margin: 4px 0 0; font-weight: 400; font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); }
+.insp dl { margin: 0; padding: 8px 10px; border-radius: 9px; background: var(--surface-2); display: grid; grid-template-columns: 72px 1fr; gap: 4px 10px; font-size: 11.5px; }
+.insp dt { color: var(--text-3); } .insp dd { margin: 0; }
+.insp .ocr { padding: 8px 10px; border-radius: 9px; background: var(--surface-2); font-size: 11.5px; line-height: 1.6; }
+.insp mark { background: #ffe9a3; color: #303030; border-radius: 2px; padding: 0 1px; }
+/* fake document thumbnails */
+.pdf { position: absolute; inset: 14px 26% 0 26%; border-radius: 4px 4px 0 0; background: #fff; box-shadow: 0 4px 18px rgba(0,0,0,.25); padding: 12px 10px; display: grid; align-content: start; gap: 5px; }
+.pdf i { display: block; height: 4px; border-radius: 2px; background: #d9dce3; }
+.pdf i.t { height: 8px; width: 70%; background: #3a3f4a; margin-bottom: 4px; }
+.pdf.blue { background: linear-gradient(170deg, #2457c5, #163a8a); } .pdf.blue i { background: rgba(255,255,255,.35); } .pdf.blue i.t { background: #fff; }
+.pdf.teal { background: linear-gradient(170deg, #0f8c8c, #0a5d66); } .pdf.teal i { background: rgba(255,255,255,.3); } .pdf.teal i.t { background: #e9fffb; }
+.pdf.cream { background: #f4efe4; } .pdf.cream i.t { background: #7a5b2e; }
+.shot { position: absolute; inset: 12px 10px 0; border-radius: 6px 6px 0 0; background: #fffbea; box-shadow: 0 4px 18px rgba(0,0,0,.25); overflow: hidden; color: #333; font-size: 8.5px; line-height: 1.6; padding: 10px 9px 0; }
+.shot b { font-weight: 400; font-size: 9.5px; display: block; margin-bottom: 3px; }
+.shot.set { background: #fbfbfc; } .shot.set div { display: flex; justify-content: space-between; border-bottom: 1px solid #eee; padding: 2px 0; }
+.shot.chat { background: #fff; } .shot.chat i { display: block; font-style: normal; margin-bottom: 4px; padding-left: 12px; position: relative; }
+.shot.chat i::before { content: ""; position: absolute; left: 0; top: 3px; width: 8px; height: 8px; border-radius: 2px; background: var(--c, #f08a3c); }
+
+.steps { display: flex; justify-content: center; gap: 8px; margin-top: 22px; }
+.step { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(255,255,255,.2); background: rgba(6,10,22,.35); color: rgba(235,240,255,.7); font-size: 14px; backdrop-filter: blur(10px);
+  transition: transform var(--press) var(--ease-out), color 200ms ease, background-color 200ms ease, border-color 200ms ease; }
+.step:active { transform: scale(.97); }
+.step .px-icon { width: 13px; height: 13px; }
+.step.on { color: #fff; background: rgba(6,10,22,.6); border-color: rgba(255,255,255,.35); }
+.step .bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: #8fb4ff; transform-origin: left; transform: scaleX(0); }
+
+/* ---------- Sections ---------- */
+section.band { padding-block: clamp(80px, 11vw, 150px); }
+.h2 { font-size: clamp(32px, 4.4vw, 58px); line-height: 1.04; letter-spacing: -0.03em; }
+.lede { color: var(--text-2); font-size: 16px; max-width: 34em; }
+.sec-head { display: grid; gap: 14px; }
+.sec-head.center { justify-items: center; text-align: center; }
+.split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 6vw, 90px); align-items: center; }
+.split.wide-left { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+.points { display: grid; gap: 28px; margin-top: 30px; }
+.point { display: grid; grid-template-columns: 34px 1fr; gap: 14px; }
+.point .px-icon { width: 18px; height: 18px; color: var(--link); margin-top: 3px; }
+.point strong { display: block; font-weight: 400; font-size: 16px; margin-bottom: 4px; }
+.point span { color: var(--text-2); font-size: 14px; }
+.kb { font-size: .9em; border: 1px solid var(--border-strong); border-radius: 5px; padding: 0 5px; white-space: nowrap; }
+
+/* real app screenshots */
+.shot-frame { position: relative; border-radius: 14px; overflow: hidden; background: var(--surface); box-shadow: 0 0 0 1px var(--shot-ring), 0 30px 80px rgba(0,0,0,.28), 0 8px 20px rgba(0,0,0,.14); }
+.shot-frame img { width: 100%; }
+/* scroll reveal: only for things that start below the fold; anything on screen at load stays put */
+.reveal { transition: opacity 700ms var(--ease-out), transform 700ms var(--ease-out); }
+.reveal.pre { opacity: 0; transform: translateY(24px) scale(.985); }
+
+/* sources strip */
+.sources { padding-block: 64px 40px; }
+.marquee { overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+.marquee + .marquee { margin-top: 18px; }
+.track { display: flex; gap: 56px; width: max-content; animation: slide 46s linear infinite; }
+.marquee.rev .track { animation-direction: reverse; animation-duration: 54s; }
+.src-name { display: inline-flex; align-items: center; gap: 10px; font-size: 22px; color: var(--text-3); white-space: nowrap; }
+.src-name i { width: 10px; height: 10px; border-radius: 2px; background: var(--c); opacity: .9; }
+.sources .sec-head { margin-top: 44px; }
+.sources h2 { font-size: clamp(24px, 2.6vw, 32px); }
+
+/* understanding */
+.ask-panel { position: relative; border-radius: 22px; border: 1px solid var(--border); background: var(--surface);
+  padding: 26px; min-height: 380px; display: grid; grid-template-rows: auto auto 1fr auto; gap: 18px; overflow: hidden; }
+.ask-panel::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background-image: radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 1.5px); background-size: 10px 10px; }
+.ask-field { position: relative; display: flex; align-items: center; gap: 12px; height: 58px; padding: 0 16px 0 18px; border-radius: 14px;
+  border: 1px solid var(--focus); background: var(--surface-2); font-size: 18px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 18%, transparent); }
+.ask-field .px-icon { width: 17px; height: 17px; color: var(--text-2); }
+.ask-field .q { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ask-field .caret { height: 19px; vertical-align: -3px; }
+.ask-chips { position: relative; display: flex; gap: 8px; flex-wrap: wrap; min-height: 30px; align-items: center; }
+.ask-result { position: relative; align-self: end; display: flex; gap: 14px; align-items: center; padding: 12px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border);
+  opacity: 0; transform: translateY(8px); transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out); }
+.ask-result.in { opacity: 1; transform: none; }
+.ask-result .mini { width: 64px; height: 52px; border-radius: 9px; flex: none; position: relative; overflow: hidden; }
+.ask-result strong { font-weight: 400; display: block; font-size: 14px; }
+.ask-result span { font-size: 12.5px; color: var(--text-2); }
+.ask-tabs { position: relative; display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; }
+.ask-tabs button { border: 0; background: transparent; color: var(--text-3); font-size: 13.5px; padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  transition: transform var(--press) var(--ease-out), color 150ms ease, background-color 150ms ease; }
+.ask-tabs button:active { transform: scale(.97); }
+.ask-tabs button[aria-selected="true"] { background: var(--emph-bg); color: var(--emph-fg); }
+@media (hover: hover) and (pointer: fine) { .ask-tabs button:hover { color: var(--text); } }
+
+/* features */
+.feat-head { display: flex; justify-content: space-between; align-items: end; gap: 24px; flex-wrap: wrap; }
+.round-btns { display: flex; gap: 8px; }
+.round-btns button { width: 40px; height: 40px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; display: grid; place-items: center; color: var(--text);
+  transition: transform var(--press) var(--ease-out), border-color 150ms ease; }
+.round-btns button:active { transform: scale(.94); }
+.round-btns .px-icon { width: 12px; height: 12px; }
+@media (hover: hover) and (pointer: fine) { .round-btns button:hover { border-color: var(--border-strong); } }
+.rail { margin-top: 40px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(280px, 340px); gap: 18px; overflow-x: auto; scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain; padding-bottom: 12px;
+  padding-left: max(var(--gutter), calc((100vw - var(--wrap)) / 2 + 16px)); padding-right: var(--gutter-r); scroll-padding-left: max(var(--gutter), calc((100vw - var(--wrap)) / 2 + 16px)); scrollbar-width: none; }
+.rail::-webkit-scrollbar { display: none; }
+.fc { scroll-snap-align: start; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); overflow: hidden; display: grid; grid-template-rows: 240px auto; }
+.fc-vis { position: relative; overflow: hidden; background: var(--tint); }
+.fc-vis::after { content: ""; position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,.22) 1px, transparent 1.5px); background-size: 8px 8px; -webkit-mask-image: linear-gradient(0deg, #000, transparent 70%); mask-image: linear-gradient(0deg, #000, transparent 70%); }
+.fc-vis .real { position: absolute; left: 22px; top: 22px; width: calc(100% + 40px); border-radius: 12px; overflow: hidden; box-shadow: 0 16px 40px rgba(10,20,50,.3), 0 0 0 1px rgba(0,0,0,.06); background: #fff; }
+.fc-body { padding: 20px 22px 24px; display: grid; gap: 8px; }
+.fc-body h3 { font-size: 18px; display: flex; align-items: center; gap: 10px; }
+.fc-body h3 .ic { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: var(--ic-bg); color: var(--ic-fg); }
+.fc-body h3 .ic .px-icon { width: 13px; height: 13px; }
+.fc-body p { color: var(--text-2); font-size: 14px; }
+.fc-body p b { font-weight: 400; color: var(--text); }
+.v-center { position: absolute; inset: 0; display: grid; place-items: center; }
+.minis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin-top: 56px; border-top: 1px solid var(--border); }
+.mini-f { padding: 26px 22px 0 0; display: grid; gap: 6px; align-content: start; }
+.mini-f .px-icon { width: 16px; height: 16px; color: var(--text-2); }
+.mini-f strong { font-weight: 400; font-size: 15px; }
+.mini-f span { color: var(--text-2); font-size: 13.5px; }
+
+/* captures */
+.cap-stage { position: relative; padding: 0 0 70px 0; }
+.cap-stage .float { position: absolute; border-radius: 14px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.08); }
+.cap-stage .strip { left: -4%; bottom: 0; width: 64%; }
+.cap-stage .saved { right: -3%; top: -26px; width: 44%; }
+.mcp { margin-top: 30px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); padding: 14px 16px; display: grid; gap: 6px; font-size: 13.5px; }
+.mcp code { font-family: var(--font); color: var(--text-2); font-size: 12.5px; }
+
+/* reveal statement */
+.statement { text-align: center; }
+.statement p.big { font-size: clamp(34px, 5.6vw, 76px); line-height: 1.04; letter-spacing: -0.035em; max-width: 15em; margin: 18px auto 0; text-wrap: balance; }
+.statement .w { color: var(--text); opacity: .22; transition: opacity 200ms linear; }
+.statement .places { margin-top: 34px; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+.place { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); font-size: 14px; color: var(--text-2); }
+.place .px-icon { width: 13px; height: 13px; }
+
+/* tour */
+.tour-rail { margin-top: 44px; display: grid; grid-auto-flow: column; grid-auto-columns: min(78vw, 820px); gap: 22px; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain;
+  padding-inline: max(var(--gutter), calc((100vw - min(78vw, 820px)) / 2)); scrollbar-width: none; padding-bottom: 40px; }
+.tour-rail::-webkit-scrollbar { display: none; }
+.tour-item { scroll-snap-align: center; display: grid; gap: 14px; transition: opacity 300ms ease; }
+.tour-item:not(.cur) { opacity: .45; }
+.tour-item figcaption { display: flex; justify-content: space-between; gap: 16px; font-size: 14px; }
+.tour-item figcaption span { color: var(--text-3); font-size: 13px; text-align: right; }
+.tour-item figure { margin: 0; }
+.pager { position: relative; margin: 0 auto; display: flex; gap: 8px; padding: 10px 14px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); width: max-content; }
+.pager button { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 999px; background: var(--border-strong); cursor: pointer; position: relative; z-index: 1; }
+.pager button::after { content: ""; position: absolute; inset: -8px -4px; } /* bigger hit area */
+.pager .ind { position: absolute; left: 14px; top: 10px; width: 8px; height: 8px; border-radius: 999px; background: var(--text); z-index: 2; pointer-events: none;
+  transition: transform 300ms var(--ease-out); }
+
+/* power users */
+.code { border-radius: 18px; background: #0b0d12; border: 1px solid rgba(255,255,255,.08); overflow: hidden; color: #cfd6e4; box-shadow: 0 30px 80px rgba(0,0,0,.3); min-width: 0; }
+.code-top { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: 12px; color: #7d8594; }
+.code-top .lights i { width: 10px; height: 10px; }
+.code-top span { margin-left: 8px; }
+.code pre { margin: 0; padding: 20px 20px 24px; font-family: var(--font); font-size: 14px; line-height: 2; overflow-x: auto; }
+.code .c { color: #6e7686; } .code .s { color: #8fb4ff; } .code .k { color: #ffce7a; }
+.code .run { display: block; }
+.code .cur { display: inline-block; width: 8px; height: 15px; background: #8fb4ff; vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+
+/* privacy band */
+.privacy { position: relative; overflow: hidden; color: var(--hero-fg);
+  background: linear-gradient(180deg, var(--bg) 0%, var(--band-1) 18%, var(--band-2) 55%, var(--band-3) 82%, var(--band-4) 100%); }
+.privacy .eyebrow { color: var(--hero-fg-2); }
+.privacy .lede { color: var(--hero-fg-2); }
+.priv-grid { margin-top: 52px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.priv { border-radius: 18px; padding: 22px; background: color-mix(in srgb, var(--bg) 40%, transparent); border: 1px solid rgba(255,255,255,.14); backdrop-filter: blur(10px); display: grid; gap: 10px; align-content: start; }
+.priv .px-icon { width: 18px; height: 18px; }
+.priv strong { font-weight: 400; font-size: 16px; }
+.priv span { color: var(--hero-fg-2); font-size: 13.5px; }
+#seaBand { display: block; width: 100%; height: 140px; margin-top: 70px; }
+
+/* pricing */
+.billing { display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); margin: 0 auto; }
+.billing button { border: 0; background: transparent; padding: 7px 14px; border-radius: 999px; cursor: pointer; color: var(--text-2); font-size: 13.5px;
+  transition: transform var(--press) var(--ease-out), color 150ms ease, background-color 150ms ease; }
+.billing button:active { transform: scale(.97); }
+.billing button small { color: var(--text-3); font-size: 11.5px; margin-left: 4px; }
+.billing button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
+.plans { margin-top: 34px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.plan { border-radius: 20px; border: 1px solid var(--border); background: var(--surface); padding: 26px; display: grid; gap: 18px; align-content: start; }
+.plan h3 { font-size: 17px; }
+.price { font-size: 52px; letter-spacing: -0.04em; line-height: 1; display: flex; align-items: flex-start; gap: 4px; font-variant-numeric: tabular-nums; }
+.price sup { font-size: 20px; margin-top: 6px; }
+.price small { font-size: 13px; color: var(--text-2); letter-spacing: 0; align-self: end; margin: 0 0 6px 6px; }
+/* price change: blur-masked swap instead of two numbers crossfading */
+.price .num { display: inline-block; transition: filter 200ms ease, opacity 200ms ease; }
+.price .num.swap { filter: blur(3px); opacity: .4; }
+.plan .lede { font-size: 14px; }
+.plan ul { list-style: none; margin: 0; padding: 18px 0 0; border-top: 1px solid var(--border); display: grid; gap: 11px; font-size: 14px; color: var(--text-2); }
+.plan ul li { display: flex; gap: 10px; }
+.plan ul .px-icon { width: 12px; height: 12px; margin-top: 4px; color: var(--success-fg); }
+.plan ul li.head { color: var(--text); }
+.plan .btn { justify-content: space-between; width: 100%; }
+.plan.pro { color: var(--hero-fg); border-color: rgba(255,255,255,.14);
+  background: linear-gradient(180deg, var(--sky-1) 0%, var(--sky-2) 35%, var(--sky-3) 75%, var(--sky-4) 100%); }
+.plan.pro .lede, .plan.pro ul { color: var(--hero-fg-2); }
+.plan.pro ul { border-color: rgba(255,255,255,.18); }
+.plan.pro ul li.head { color: var(--hero-fg); }
+.plan.pro .price small { color: var(--hero-fg-2); }
+.save { font-size: 11.5px; padding: 2px 8px; border-radius: 6px; background: var(--magic-bg); color: var(--magic-fg); align-self: center; }
+.fine { text-align: center; font-size: 12.5px; color: var(--text-3); }
+
+/* faq */
+.faq { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: clamp(32px, 6vw, 90px); align-items: end; }
+details { border-bottom: 1px solid var(--border); }
+summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 16px; padding: 18px 0; font-size: 16px; }
+summary::-webkit-details-marker { display: none; }
+summary .px-icon { width: 12px; height: 12px; margin-top: 6px; transition: transform 200ms var(--ease-out); color: var(--text-3); }
+details[open] summary .px-icon { transform: rotate(180deg); }
+details p { color: var(--text-2); font-size: 14.5px; padding: 0 0 20px; max-width: 40em; }
+.help-card { color: var(--text-2); font-size: 14.5px; display: grid; gap: 16px; justify-items: start; }
+
+/* footer */
+footer { border-top: 1px solid var(--border); padding-block: 56px 40px; }
+.foot-top { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
+.foot-top .logo { color: var(--text); }
+.foot-top small { color: var(--text-3); font-size: 13px; margin-left: 12px; }
+.foot-cols { margin-top: 40px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.6fr); gap: 24px; }
+.foot-cols h4 { margin: 0 0 12px; font-weight: 400; font-size: 14px; }
+.foot-cols ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.foot-cols a { color: var(--text-3); text-decoration: none; font-size: 13.5px; transition: color 150ms ease; }
+@media (hover: hover) and (pointer: fine) { .foot-cols a:hover { color: var(--text); } }
+.signup p { color: var(--text-3); font-size: 13.5px; margin-bottom: 12px; }
+.signup form { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); max-width: 320px; }
+.signup input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 16px; outline: none; height: 34px; }
+.signup button { width: 34px; height: 34px; border-radius: 999px; border: 0; background: var(--surface-3); cursor: pointer; display: grid; place-items: center; color: var(--text);
+  transition: transform var(--press) var(--ease-out); }
+.signup button:active { transform: scale(.94); }
+.signup button .px-icon { width: 12px; height: 12px; }
+.signup .msg { font-size: 12.5px; margin-top: 8px; min-height: 1.2em; }
+.wordmark { margin-top: 56px; font-size: clamp(64px, 17vw, 240px); line-height: .85; letter-spacing: -0.06em; text-align: center; color: transparent;
+  background: linear-gradient(180deg, var(--text-3), transparent 90%); -webkit-background-clip: text; background-clip: text; opacity: .45; user-select: none; }
+
+/* ---------- keyframes ---------- */
+@keyframes blink { 50% { opacity: 0; } }
+@keyframes nudge { 50% { transform: translateY(4px); } }
+@keyframes ring { from { transform: scale(.9); opacity: .8; } to { transform: scale(1.5); opacity: 0; } }
+@keyframes wave { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+@keyframes slide { to { transform: translateX(-50%); } }
+@keyframes eq { 50% { transform: scaleY(.3); } }
+@keyframes fade-in { from { opacity: 0; } }
+
+/* ---------- responsive ---------- */
+@media (max-width: 960px) {
+  .split, .split.wide-left, .faq { grid-template-columns: minmax(0, 1fr); }
+  .priv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .plans { grid-template-columns: minmax(0, 1fr); max-width: 460px; margin-inline: auto; }
+  .minis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .foot-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .signup { grid-column: 1 / -1; }
+  .pill-nav a:not(.dl):not(.keep) { display: none; }
+  .laptop-wrap { width: 34vw; right: -16vw; }
+  .cap-stage .strip { left: 0; width: 80%; }
+  .cap-stage .saved { right: 0; width: 56%; }
+}
+@media (max-width: 640px) {
+  .laptop-wrap { display: none; }
+  .site-head { grid-template-columns: auto 1fr auto; }
+  .pill-nav { justify-self: end; margin-right: 8px; }
+  .pill-nav a.keep { display: none; }
+  .hero-ctas { flex-direction: column; align-items: stretch; width: min(100%, 320px); }
+  .hero-ctas .btn { justify-content: center; }
+  .hero-sub { font-size: 14.5px; }
+  .priv-grid, .minis { grid-template-columns: minmax(0, 1fr); }
+  .steps { flex-wrap: wrap; }
+  .tour-rail { grid-auto-columns: 88vw; padding-inline: 6vw; }
+  .tour-item figcaption { flex-direction: column; gap: 2px; } .tour-item figcaption span { text-align: left; }
+}
+/* phone layout of the demo: narrower window, two-column results, no inspector */
+.demo-wrap.compact { width: 600px; height: 1010px; margin: -505px 0 0 -300px; }
+.compact .win { width: 600px; height: 920px; }
+.compact .win-tabs, .compact .win-tools, .compact .kbd, .compact .insp, .compact .chip.save, .compact .chip.plain:not(.try .chip) { display: none; }
+.compact .d-home { padding-top: 54px; padding-inline: 30px; text-align: center; }
+.compact .d-home h3 { font-size: 34px; }
+.compact .d-search { top: 210px; } .compact.demo-wrap .win.searching .d-search { transform: translateY(-192px); }
+.compact .d-field { font-size: 22px; }
+.compact .d-results { top: 230px; grid-template-columns: minmax(0, 1fr); }
+.compact .d-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.compact .d-rhead span { display: none; }
+.compact .fname { font-size: 15px; } .compact .fmeta, .compact .why { font-size: 13px; }
+.compact .chip { font-size: 15px; height: 34px; }
+.compact .try .chip:nth-child(n+2) { display: none; }
+.compact .steps { margin-top: 26px; }
+.compact .step { height: 50px; font-size: 18px; padding: 0 18px; }
+
+/* Reduced motion: fewer and gentler, not zero. Keep fades that explain state, drop movement. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .intro, .laptop.intro { animation-name: fade-in; animation-duration: 400ms; }
+  .reveal.pre { transform: none; }
+  .fcard, .insp, .ask-result, .d-home, .chip.pop { transform: none !important; }
+  .chip.pop { animation-name: fade-in; }
+  .win.searching .d-search, .compact.demo-wrap .win.searching .d-search { transition-duration: 0ms; }
+  .track { animation: none; }
+  .scroll-hint .px-icon, .wave i, .win.voice .d-mic::before, .win.voice .d-mic::after { animation: none; }
+  .btn:active, .press:active, .play-btn:active, .step:active { transform: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="site-head">
+  <a class="logo" href="#top" aria-label="Orca Find home"><img src="assets/app-icon-64.png" alt="" width="28" height="28">orca find</a>
+  <nav class="pill-nav" aria-label="Main">
+    <a href="#top" class="on keep" data-nav="top">Home</a>
+    <a href="#features" data-nav="features">Features</a>
+    <a href="#captures" data-nav="captures">Captures</a>
+    <a href="#tour" data-nav="tour">Tour</a>
+    <a href="#pricing" data-nav="pricing">Pricing</a>
+    <a href="#faq" data-nav="faq">FAQ</a>
+    <a href="#pricing" class="dl"><span class="px-icon" data-i="download"></span>Download</a>
+  </nav>
+  <div class="theme-toggle" role="group" aria-label="Theme">
+    <button type="button" data-theme-set="light" aria-label="Light theme" aria-pressed="false"><span class="px-icon" data-i="sun"></span></button>
+    <button type="button" data-theme-set="system" aria-label="Match system theme" aria-pressed="true"><span class="px-icon" data-i="monitor"></span></button>
+    <button type="button" data-theme-set="dark" aria-label="Dark theme" aria-pressed="false"><span class="px-icon" data-i="moon"></span></button>
+  </div>
+</header>
+
+<main>
+<!-- ================= HERO ================= -->
+<section class="hero" id="top" aria-label="Orca Find">
+  <div class="stage">
+    <div class="scene" id="scene">
+      <canvas id="sky" aria-hidden="true"></canvas>
+      <div class="laptop-wrap" id="laptop" aria-hidden="true"><div class="laptop intro" style="--d:200"><div class="screen">
+        <div class="ghost-search"><span class="px-icon" data-i="search"></span>screenshots with the wifi pass<i></i></div>
+        <div class="ghost-rows"><span></span><span></span><span></span></div>
+      </div></div></div>
+
+      <div class="hero-copy" id="heroCopy">
+        <h1><span class="intro" style="--d:250">Just ask.</span><span class="intro" style="--d:330">Find it faster.</span></h1>
+        <div class="hero-ctas intro" style="--d:480">
+          <a class="btn btn-primary" href="#pricing"><span class="px-icon" data-i="download"></span>Download for Mac</a>
+          <a class="btn btn-dark" href="#demo" data-play><span class="px-icon" data-i="play"></span>Watch the demo</a>
+        </div>
+        <a class="hero-note intro" style="--d:560" href="#faq">Requires macOS 14 Sonoma or later <span class="px-icon" data-i="chev-r"></span></a>
+        <p class="hero-sub intro" style="--d:620"><b>Turn a half-remembered thought into the right file.</b>Works on file names, the text inside files and screenshots, and where every download came from.</p>
+      </div>
+      <div class="scroll-hint" id="scrollHint" aria-hidden="true"><span class="intro" style="--d:900">Scroll to see the demo</span><span class="px-icon" data-i="arrow-d"></span></div>
+
+      <div class="hero-ready" id="heroReady">
+        <h2>Ready to see how it works?</h2>
+        <button class="play-btn" type="button" data-play><span><span class="px-icon" data-i="play"></span></span>Play demo</button>
+      </div>
+
+      <div class="demo-wrap" id="demo" aria-label="Orca Find demo">
+        <div class="win" id="win">
+          <div class="win-bar">
+            <div class="lights"><i></i><i></i><i></i></div>
+            <div class="win-brand"><span class="px-icon" data-i="search"></span>orca find</div>
+            <div class="win-tabs"><span class="on">Home</span><span>Captures</span><span>Library</span><span>Downloads</span><span>Tidy</span></div>
+            <div class="win-tools"><span class="px-icon" data-i="folder"></span><span class="px-icon" data-i="moon"></span><span class="px-icon" data-i="gear"></span></div>
+          </div>
+          <div class="win-body">
+            <div class="d-home">
+              <h3>What are you looking for?</h3>
+              <p>Type it or just say it. Orca reads file names, the text inside files and screenshots, and where each download came from.</p>
+            </div>
+            <div class="d-search">
+              <div class="d-field">
+                <span class="px-icon" data-i="search"></span>
+                <div class="d-q" id="dq"><span class="ph">Try “the PDF with the blue cover”</span></div>
+                <span class="kbd">⇧⌘Space</span>
+                <div class="d-mic"><span class="px-icon" data-i="mic"></span></div>
+              </div>
+              <div class="d-under" id="dunder">
+                <span class="eyebrow">Try asking</span>
+                <div class="try">
+                  <span class="chip plain"><span class="px-icon" data-i="image"></span>that tiger photo I downloaded</span>
+                  <span class="chip plain"><span class="px-icon" data-i="sparkle"></span>photos of receipts</span>
+                  <span class="chip plain"><span class="px-icon" data-i="doc"></span>the PDF with the blue cover</span>
+                </div>
+              </div>
+            </div>
+            <div class="d-results">
+              <div>
+                <div class="d-rhead"><strong id="dcount">3 results</strong><span id="dsub">best match first</span></div>
+                <div class="d-grid" id="dgrid"></div>
+              </div>
+              <aside class="insp" id="insp" aria-label="Inspector"></aside>
+            </div>
+          </div>
+        </div>
+        <div class="steps" role="tablist" aria-label="Demo scenes">
+          <button class="step on" type="button" role="tab" aria-selected="true" data-step="0"><span class="px-icon" data-i="keyboard"></span>Type it<span class="bar"></span></button>
+          <button class="step" type="button" role="tab" aria-selected="false" data-step="1"><span class="px-icon" data-i="mic"></span>Say it<span class="bar"></span></button>
+          <button class="step" type="button" role="tab" aria-selected="false" data-step="2"><span class="px-icon" data-i="download"></span>Ask where it came from<span class="bar"></span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SOURCES ================= -->
+<section class="sources" aria-labelledby="src-h">
+  <div class="marquee"><div class="track" id="trackA"></div></div>
+  <div class="marquee rev"><div class="track" id="trackB"></div></div>
+  <div class="wrap sec-head center">
+    <h2 id="src-h">Knows where every download came from</h2>
+    <p class="lede">Ask for “the deck from Slack” or “images from ChatGPT”. Orca reads the source macOS saves with each download, and recognises 21 apps and sites plus AirDrop.</p>
+  </div>
+</section>
+
+<!-- ================= UNDERSTANDING ================= -->
+<section class="band" id="understand" aria-labelledby="und-h">
+  <div class="wrap split">
+    <div class="sec-head">
+      <span class="eyebrow">Plain English</span>
+      <h2 class="h2" id="und-h">Search the way you remember it</h2>
+      <p class="lede">You rarely remember a file name. You remember a blue cover, a tiger, a word in a screenshot, or that someone sent it on Slack. Orca turns that into filters you can see and remove.</p>
+    </div>
+    <div class="ask-panel">
+      <div class="ask-field"><span class="px-icon" data-i="search"></span><span class="q" id="askQ"></span><span class="px-icon" data-i="mic"></span></div>
+      <div class="ask-chips" id="askChips"></div>
+      <div class="ask-result" id="askRes"><div class="mini" id="askMini"></div><div><strong id="askName"></strong><span id="askWhy"></span></div></div>
+      <div class="ask-tabs" role="tablist" aria-label="Examples" id="askTabs">
+        <button type="button" role="tab" aria-selected="true" data-ask="0">By look</button>
+        <button type="button" role="tab" aria-selected="false" data-ask="1">Text inside</button>
+        <button type="button" role="tab" aria-selected="false" data-ask="2">By source</button>
+        <button type="button" role="tab" aria-selected="false" data-ask="3">Date &amp; size</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= FEATURES ================= -->
+<section class="band" id="features" aria-labelledby="feat-h" style="padding-top:0">
+  <div class="wrap feat-head">
+    <div class="sec-head">
+      <span class="eyebrow" style="color:var(--magic-fg)">What’s inside</span>
+      <h2 class="h2" id="feat-h">One window for finding,<br>saving and tidying</h2>
+    </div>
+    <div class="round-btns"><button type="button" aria-label="Previous" data-rail="-1"><span class="px-icon" data-i="chev-l"></span></button><button type="button" aria-label="Next" data-rail="1"><span class="px-icon" data-i="chev-r"></span></button></div>
+  </div>
+  <div class="rail" id="rail">
+    <article class="fc" style="--tint:linear-gradient(160deg,#a9c8f2,#4f86d6);--ic-bg:var(--info-bg);--ic-fg:var(--info-fg)">
+      <div class="fc-vis"><div class="real"><img src="assets/screens/f-ocr.webp" alt="Orca's inspector listing the text it found in a screenshot, with “wifi password” highlighted" width="648" height="464" loading="lazy"></div></div>
+      <div class="fc-body"><h3><span class="ic"><span class="px-icon" data-i="scan"></span></span>Reads every screenshot</h3><p>Text in images and PDFs is recognised on your Mac. <b>“wifi password” finds the screenshot.</b></p></div>
+    </article>
+    <article class="fc" style="--tint:linear-gradient(160deg,#f7d98a,#e9a93b);--ic-bg:var(--attn-bg);--ic-fg:var(--attn-fg)">
+      <div class="fc-vis"><div class="real"><img src="assets/screens/f-downloads.webp" alt="The Downloads tab with folders for Gmail, GitHub and Slack" width="1072" height="760" loading="lazy"></div></div>
+      <div class="fc-body"><h3><span class="ic"><span class="px-icon" data-i="download"></span></span>Sorted by where it came from</h3><p>The Downloads tab groups files by source. <b>⇧⌘J shows where any file came from.</b></p></div>
+    </article>
+    <article class="fc" style="--tint:linear-gradient(160deg,#c7b4ff,#7a55e0);--ic-bg:var(--magic-bg);--ic-fg:var(--magic-fg)">
+      <div class="fc-vis"><div class="v-center">
+        <div style="width:84px;height:84px;border-radius:50%;background:rgba(255,255,255,.9);display:grid;place-items:center;color:#5700d1;box-shadow:0 0 0 12px rgba(255,255,255,.18),0 0 0 26px rgba(255,255,255,.08)"><span class="px-icon" data-i="mic" style="width:30px;height:30px"></span></div>
+      </div><div style="position:absolute;left:0;right:0;bottom:22px;display:flex;justify-content:center;gap:4px" class="eqbars"></div></div>
+      <div class="fc-body"><h3><span class="ic"><span class="px-icon" data-i="mic"></span></span>Just say it</h3><p>Press <span class="kb">⌥⌘F</span> or the mic and talk. <b>Recognition runs on-device when your Mac supports it.</b></p></div>
+    </article>
+    <article class="fc" style="--tint:linear-gradient(160deg,#9fe0c0,#3fa57a);--ic-bg:var(--success-bg);--ic-fg:var(--success-fg)">
+      <div class="fc-vis"><div class="real"><img src="assets/screens/f-dupes.webp" alt="Duplicate groups with Keep and Trash labels on each copy" width="1172" height="824" loading="lazy"></div></div>
+      <div class="fc-body"><h3><span class="ic"><span class="px-icon" data-i="copy"></span></span>Duplicates and look-alikes</h3><p>Exact copies, burst shots, edits and HEIC + JPEG pairs. <b>iCloud-only files are skipped.</b></p></div>
+    </article>
+    <article class="fc" style="--tint:linear-gradient(160deg,#f6b3a7,#e0634f);--ic-bg:var(--crit-bg);--ic-fg:var(--crit-fg)">
+      <div class="fc-vis"><div class="real"><img src="assets/screens/f-captures.webp" alt="The Captures tab showing a saved tweet and a photo with spoken notes" width="956" height="672" loading="lazy"></div></div>
+      <div class="fc-body"><h3><span class="ic"><span class="px-icon" data-i="grab"></span></span>Grab anything on screen</h3><p><span class="kb">⌥⇧Space</span>, drag, and say why you saved it. <b>Find it again by what you said.</b></p></div>
+    </article>
+    <article class="fc" style="--tint:linear-gradient(160deg,#5b6273,#22262f);--ic-bg:var(--emph-bg);--ic-fg:var(--emph-fg)">
+      <div class="fc-vis"><div class="v-center"><div style="width:84%;border-radius:14px;background:rgba(20,22,28,.85);border:1px solid rgba(255,255,255,.12);padding:12px;color:#e3e3e3;font-size:12px;box-shadow:0 20px 40px rgba(0,0,0,.35)">
+        <div style="display:flex;align-items:center;gap:8px"><span class="px-icon" data-i="search"></span>latest download<span style="margin-left:auto;font-size:10px;color:#8a8a8a;border:1px solid #444;border-radius:4px;padding:0 4px">⇧⌘Space</span></div>
+        <div style="margin-top:10px;padding:7px 8px;border-radius:8px;background:#2e7bea;color:#fff;font-size:11px">Invoice 2291 Acme Corp.pdf · just now</div>
+        <div style="padding:7px 8px;font-size:11px;color:#9aa1ac">orca-logo.jpg · 2 h ago</div>
+      </div></div></div>
+      <div class="fc-body"><h3><span class="ic"><span class="px-icon" data-i="bolt"></span></span>Quick Search, over any app</h3><p><span class="kb">⇧⌘Space</span> opens a floating search panel. <b>No window switching.</b></p></div>
+    </article>
+  </div>
+  <div class="wrap">
+    <div class="minis">
+      <div class="mini-f"><span class="px-icon" data-i="broom"></span><strong>Clean Up</strong><span>Old installers, forgotten downloads, big old videos and more, in six cards.</span></div>
+      <div class="mini-f"><span class="px-icon" data-i="tray"></span><strong>Menu bar downloads</strong><span>Your 10 newest downloads, ready to drag into any app.</span></div>
+      <div class="mini-f"><span class="px-icon" data-i="eye"></span><strong>Quick Look</strong><span>Space to preview, arrow keys to flip through results.</span></div>
+      <div class="mini-f"><span class="px-icon" data-i="undo"></span><strong>Undo after trashing</strong><span>Nothing is deleted. Files go to the Trash and come back in one click.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= CAPTURES ================= -->
+<section class="band" id="captures" aria-labelledby="cap-h" style="padding-top:0">
+  <div class="wrap split">
+    <div>
+      <div class="sec-head">
+        <span class="eyebrow" style="color:var(--crit-fg)">Captures</span>
+        <h2 class="h2" id="cap-h">Grab it now. Say why. Find it months later.</h2>
+        <p class="lede">A tweet, a recipe, a product, a slide. Press the shortcut, drag over it and talk. There is nothing to fill in.</p>
+      </div>
+      <div class="points">
+        <div class="point"><span class="px-icon" data-i="grab"></span><div><strong>Shortcut, drag, talk</strong><span>Recording starts by itself. Stop talking for two seconds and it’s saved, with the page link attached.</span></div></div>
+        <div class="point"><span class="px-icon" data-i="cal"></span><div><strong>“Remind me Thursday”</strong><span>Say it and Orca adds it to Apple Reminders. Say “for the newsletter” and it lands in that collection.</span></div></div>
+        <div class="point"><span class="px-icon" data-i="sparkle"></span><div><strong>Your AI can look too</strong><span>Connect Claude Desktop or Claude Code in Settings, then ask it to draft Friday’s newsletter from what you saved.</span></div></div>
+      </div>
+    </div>
+    <div class="cap-stage reveal">
+      <div class="shot-frame"><img src="assets/screens/t-capture.webp" alt="A saved capture of a post on X, with the spoken note, page link, Apple Reminders date and collection beside it" width="1600" height="1075" loading="lazy"></div>
+      <div class="float saved"><img src="assets/screens/saved.webp" alt="Saved to Newsletter toast with a link and a reminder for Thursday 9:00" width="760" height="224" loading="lazy"></div>
+      <div class="float strip"><img src="assets/screens/strip.webp" alt="The recording strip under a grab, showing the spoken words as they are heard" width="1200" height="276" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SMART FOLDERS ================= -->
+<section class="band" id="smart-folders" aria-labelledby="sf-h" style="padding-top:0">
+  <div class="wrap split wide-left">
+    <div class="shot-frame reveal"><img src="assets/screens/rules.webp" alt="New smart folder sheet with rules for kind, text inside and date, and the four files that match" width="1200" height="843" loading="lazy"></div>
+    <div>
+      <div class="sec-head">
+        <span class="eyebrow" style="color:var(--link)">Smart folders</span>
+        <h2 class="h2" id="sf-h">Make your own</h2>
+        <p class="lede">Save any search as a folder that fills itself. Your files stay exactly where they are.</p>
+      </div>
+      <div class="points">
+        <div class="point"><span class="px-icon" data-i="sparkle"></span><div><strong>Describe it in a sentence</strong><span>Type what belongs inside and Orca writes the rules for you.</span></div></div>
+        <div class="point"><span class="px-icon" data-i="sliders"></span><div><strong>Or set the rules by hand</strong><span>Kind, text inside, source, date and size. “This month” stays relative.</span></div></div>
+        <div class="point"><span class="px-icon" data-i="folder"></span><div><strong>Nothing moves in Finder</strong><span>A smart folder is a live view. New matches get a badge.</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= STATEMENT ================= -->
+<section class="band statement" aria-labelledby="st-h" style="padding-top:0">
+  <div class="wrap">
+    <span class="eyebrow" id="st-h">Everywhere you save</span>
+    <p class="big" id="reveal">You saved it somewhere months ago. Orca remembers where, and what was inside.</p>
+    <div class="places">
+      <span class="place"><span class="px-icon" data-i="monitor"></span>Desktop</span>
+      <span class="place"><span class="px-icon" data-i="doc"></span>Documents</span>
+      <span class="place"><span class="px-icon" data-i="download"></span>Downloads</span>
+      <span class="place"><span class="px-icon" data-i="grab"></span>Captures</span>
+    </div>
+  </div>
+</section>
+
+<!-- ================= TOUR ================= -->
+<section class="band" id="tour" aria-labelledby="tour-h" style="padding-top:0">
+  <div class="wrap sec-head center">
+    <span class="eyebrow" style="color:var(--link)">Tour</span>
+    <h2 class="h2" id="tour-h">Every screen, as it ships</h2>
+    <p class="lede">Real screenshots of Orca Find, in light and dark.</p>
+  </div>
+  <div class="tour-rail" id="tourRail"></div>
+  <div class="pager" id="pager" role="tablist" aria-label="Tour screens"><span class="ind" id="pagerInd"></span></div>
+</section>
+
+<!-- ================= POWER USERS ================= -->
+<section class="band" aria-labelledby="pu-h" style="padding-top:0">
+  <div class="wrap split">
+    <div>
+      <div class="sec-head">
+        <span class="eyebrow" style="color:var(--attn-fg)">Power users</span>
+        <h2 class="h2" id="pu-h">A URL for every screen</h2>
+        <p class="lede">Open a search, the voice panel or Clean Up from Shortcuts, Raycast, Alfred or a script.</p>
+      </div>
+      <div class="points">
+        <div class="point"><span class="px-icon" data-i="link"></span><div><strong>orcafind:// links</strong><span>Search with any query, or jump straight to Duplicates or your latest download.</span></div></div>
+        <div class="point"><span class="px-icon" data-i="keyboard"></span><div><strong>Keyboard first</strong><span><span class="kb">⌘K</span> to search, <span class="kb">Space</span> for Quick Look, <span class="kb">⇧⌘D</span> for duplicates, <span class="kb">⇧⌘K</span> for Clean Up.</span></div></div>
+      </div>
+    </div>
+    <div class="code" aria-label="URL scheme examples">
+      <div class="code-top"><div class="lights"><i></i><i></i><i></i></div><span>Terminal</span></div>
+<pre><span class="c"># search in plain English</span>
+<span class="run" data-type='open "orcafind://search?q=pdfs%20from%20gmail"'></span><span class="c"># open the voice panel</span>
+<span class="run" data-type='open "orcafind://voice"'></span><span class="c"># reveal your newest download</span>
+<span class="run" data-type='open "orcafind://latest-download"'></span><span class="c"># find duplicates</span>
+<span class="run" data-type='open "orcafind://duplicates"'></span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PRIVACY ================= -->
+<section class="band privacy" id="privacy" aria-labelledby="pv-h">
+  <div class="wrap">
+    <div class="sec-head center">
+      <span class="eyebrow">Private by design</span>
+      <h2 class="h2" id="pv-h">Your files stay on your Mac</h2>
+      <p class="lede">Indexing, text recognition and search all happen locally. Nothing is uploaded to find a file.</p>
+    </div>
+    <div class="priv-grid">
+      <div class="priv"><span class="px-icon" data-i="scan"></span><strong>On-device text recognition</strong><span>Screenshots and scans are read with Apple’s Vision framework.</span></div>
+      <div class="priv"><span class="px-icon" data-i="sparkle"></span><strong>On-device understanding</strong><span>Sentences are parsed with Apple Intelligence where your Mac has it.</span></div>
+      <div class="priv"><span class="px-icon" data-i="mic"></span><strong>Local voice</strong><span>Speech is recognised on-device when available, for search and for captures.</span></div>
+      <div class="priv"><span class="px-icon" data-i="lock"></span><strong>You decide what AI sees</strong><span>Captures stay on your Mac. A connected Claude reads them only when a chat asks.</span></div>
+    </div>
+  </div>
+  <canvas id="seaBand" aria-hidden="true"></canvas>
+</section>
+
+<!-- ================= PRICING ================= -->
+<section class="band" id="pricing" aria-labelledby="pr-h">
+  <div class="wrap">
+    <div class="sec-head center">
+      <span class="eyebrow">Pricing</span>
+      <h2 class="h2" id="pr-h">Try everything, then decide</h2>
+      <div class="billing" role="group" aria-label="Billing period">
+        <button type="button" data-bill="monthly" aria-pressed="false">Monthly</button>
+        <button type="button" data-bill="yearly" aria-pressed="true">Yearly <small>2 months free</small></button>
+      </div>
+    </div>
+    <div class="plans">
+      <div class="plan">
+        <h3>Trial</h3>
+        <div class="price"><sup>$</sup>0<small>for 14 days</small></div>
+        <p class="lede">Every feature, on your own files.</p>
+        <ul><li><span class="px-icon" data-i="check"></span>Plain-English and voice search</li><li><span class="px-icon" data-i="check"></span>Text inside files and screenshots</li><li><span class="px-icon" data-i="check"></span>Captures with spoken notes</li><li><span class="px-icon" data-i="check"></span>Duplicates and Clean Up</li></ul>
+        <a class="btn btn-ghost" href="#top">Download <span class="px-icon" data-i="arrow-r"></span></a>
+      </div>
+      <div class="plan pro">
+        <h3 style="display:flex;justify-content:space-between;align-items:center">Pro <span class="save" id="saveTag">Save 17%</span></h3>
+        <div class="price"><sup>$</sup><span class="num" id="proPrice">4</span><small id="proUnit">/month, billed yearly</small></div>
+        <p class="lede">For people who live in their Downloads folder.</p>
+        <ul><li class="head">Everything in Trial, plus:</li><li><span class="px-icon" data-i="check"></span>Unlimited smart folders</li><li><span class="px-icon" data-i="check"></span>Claude connection for captures</li><li><span class="px-icon" data-i="check"></span>Automatic clean-up rules</li><li><span class="px-icon" data-i="check"></span>Free updates while subscribed</li></ul>
+        <a class="btn btn-primary" href="#top">Get Pro <span class="px-icon" data-i="arrow-r"></span></a>
+      </div>
+      <div class="plan">
+        <h3>Lifetime</h3>
+        <div class="price"><sup>$</sup>49<small>once</small></div>
+        <p class="lede">Pay once, keep this version forever.</p>
+        <ul><li class="head">Everything in Pro, plus:</li><li><span class="px-icon" data-i="check"></span>One licence, up to 3 Macs</li><li><span class="px-icon" data-i="check"></span>A year of updates included</li><li><span class="px-icon" data-i="check"></span>Priority email support</li></ul>
+        <a class="btn btn-ghost" href="#top">Buy Lifetime <span class="px-icon" data-i="arrow-r"></span></a>
+      </div>
+    </div>
+    <p class="fine" style="margin-top:22px">Prices in USD. 30-day refund on every plan.</p>
+  </div>
+</section>
+
+<!-- ================= FAQ ================= -->
+<section class="band" id="faq" aria-labelledby="faq-h" style="padding-top:0">
+  <div class="wrap faq">
+    <div>
+      <div class="sec-head"><span class="eyebrow">Support</span><h2 class="h2" id="faq-h" style="font-size:clamp(28px,3vw,40px)">Questions</h2></div>
+      <div style="margin-top:20px">
+        <details><summary>Which Macs does it run on?<span class="px-icon" data-i="chev-d"></span></summary><p>Any Mac running macOS 14 Sonoma or later. Sentence understanding uses Apple Intelligence where your Mac supports it; everything else works without it.</p></details>
+        <details><summary>Does anything get uploaded?<span class="px-icon" data-i="chev-d"></span></summary><p>No. Orca builds its index, reads text in images and understands your sentences on your Mac.</p></details>
+        <details><summary>How is this different from Spotlight?<span class="px-icon" data-i="chev-d"></span></summary><p>Spotlight matches names and metadata. Orca understands sentences like “the PDF with the blue cover”, reads text inside screenshots, knows which site a download came from, and adds captures, duplicates and clean-up in the same window.</p></details>
+        <details><summary>Where are captures kept?<span class="px-icon" data-i="chev-d"></span></summary><p>In a folder on your Mac, with the image, your voice note and the text Orca read from it. Settings › Captures shows the folder.</p></details>
+        <details><summary>Can Claude see my files?<span class="px-icon" data-i="chev-d"></span></summary><p>Only if you connect it in Settings › Captures, and only your captures. Claude reads them when a chat asks for them; your other files are never shared.</p></details>
+        <details><summary>Can I search by voice?<span class="px-icon" data-i="chev-d"></span></summary><p>Yes. Press ⌥⌘F or click the mic in the search bar, then say what you are looking for.</p></details>
+      </div>
+    </div>
+    <div class="help-card">
+      <p>Can’t find your answer? The docs cover every shortcut, the URL scheme and how search reads your sentences.</p>
+      <a class="btn btn-ghost" href="#faq">Documentation <span class="px-icon" data-i="arrow-r"></span></a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-top">
+      <a class="logo" href="#top"><img src="assets/app-icon-64.png" alt="" width="28" height="28">orca find<small>© 2026</small></a>
+    </div>
+    <div class="foot-cols">
+      <div><h4>Product</h4><ul><li><a href="#top">Download</a></li><li><a href="#features">Features</a></li><li><a href="#captures">Captures</a></li><li><a href="#pricing">Pricing</a></li></ul></div>
+      <div><h4>Resources</h4><ul><li><a href="#faq">Documentation</a></li><li><a href="#faq">Keyboard shortcuts</a></li><li><a href="#faq">URL scheme</a></li><li><a href="#faq">Changelog</a></li></ul></div>
+      <div><h4>Support</h4><ul><li><a href="#faq">FAQ</a></li><li><a href="#faq">Find my licence</a></li><li><a href="#faq">Contact</a></li></ul></div>
+      <div><h4>Policies</h4><ul><li><a href="#privacy">Privacy</a></li><li><a href="#faq">Terms</a></li><li><a href="#pricing">Refunds</a></li></ul></div>
+      <div class="signup">
+        <h4 style="margin:0 0 12px;font-weight:400;font-size:14px">Stay in the loop</h4>
+        <p>One short email when something new ships.</p>
+        <form id="signup" novalidate><label for="email" class="sr">Email</label><input id="email" type="email" placeholder="you@example.com" autocomplete="email"><button type="submit" aria-label="Subscribe"><span class="px-icon" data-i="arrow-r"></span></button></form>
+        <div class="msg" id="signupMsg" aria-live="polite"></div>
+      </div>
+    </div>
+    <div class="wordmark" aria-hidden="true">orca find</div>
+  </div>
+</footer>
+
+<script>
+(() => {
+'use strict';
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const span = (p, a, b) => clamp((p - a) / (b - a), 0, 1);
+// cubic-bezier(0.23, 1, 0.32, 1) and (0.77, 0, 0.175, 1), approximated for scroll-driven values
+const easeOut = t => 1 - Math.pow(1 - t, 5);
+const easeInOut = t => t < .5 ? 16 * t ** 5 : 1 - Math.pow(-2 * t + 2, 5) / 2;
+
+/* ---------- pixel icons (9×9 bitmaps, drawn as SVG squares) ---------- */
+const ICONS = {
+  download: ['....#....','....#....','....#....','..#.#.#..','...###...','....#....','.........','.#######.','.........'],
+  play:     ['..#......','..##.....','..###....','..####...','..#####..','..####...','..###....','..##.....','..#......'],
+  search:   ['..####...','.#....#..','#......#.','#......#.','#......#.','.#....#..','..####.#.','.......##','........#'],
+  mic:      ['...###...','...###...','...###...','...###...','.#.###.#.','.#..#..#.','..##.##..','....#....','..#####..'],
+  sun:      ['....#....','.#.....#.','...###...','..#####..','#.#####.#','..#####..','...###...','.#.....#.','....#....'],
+  moon:     ['...###...','..##.....','.##......','.##......','.##......','.##......','.###...#.','..######.','...###...'],
+  monitor:  ['#########','#.......#','#.......#','#.......#','#.......#','#########','....#....','...###...','.........'],
+  'chev-r': ['..#......','...#.....','....#....','.....#...','......#..','.....#...','....#....','...#.....','..#......'],
+  'chev-l': ['......#..','.....#...','....#....','...#.....','..#......','...#.....','....#....','.....#...','......#..'],
+  'chev-d': ['.........','.........','#.......#','.#.....#.','..#...#..','...#.#...','....#....','.........','.........'],
+  'arrow-d':['....#....','....#....','....#....','....#....','#...#...#','.#..#..#.','..#.#.#..','...###...','....#....'],
+  'arrow-r':['.........','.....#...','......#..','.......#.','#########','.......#.','......#..','.....#...','.........'],
+  folder:   ['.........','####.....','#...#####','#.......#','#########','#.......#','#.......#','#########','.........'],
+  gear:     ['....#....','.#.###.#.','..#...#..','.#.....#.','##..#..##','.#.....#.','..#...#..','.#.###.#.','....#....'],
+  image:    ['#########','#.......#','#.##....#','#.##....#','#.....#.#','#..#.###.','#.#####.#','#########','.........'],
+  sparkle:  ['....#....','....#....','...###...','#########','...###...','....#....','....#.#..','......###','.......#.'],
+  doc:      ['######...','#....##..','#.....##.','#.###..#.','#.......#','#.#####.#','#.......#','#.#####.#','#########'],
+  keyboard: ['.........','#########','#.#.#.#.#','#.......#','#.#.#.#.#','#.......#','#.#####.#','#########','.........'],
+  scan:     ['###...###','#.......#','#.......#','..#####..','.........','..####...','#.......#','#.......#','###...###'],
+  grab:     ['##.#.#.##','#.......#','.........','#..###..#','...#.#...','#..###..#','.........','#.......#','##.#.#.##'],
+  copy:     ['...######','...#....#','######..#','#....#..#','#....#..#','#....####','#....#...','######...','.........'],
+  broom:    ['......##.','.....##..','....##...','...##....','.#####...','#######..','#.#.#.#..','#.#.#.#..','.........'],
+  bolt:     ['.....##..','....##...','...##....','..######.','.....##..','....##...','...##....','..##.....','.#.......'],
+  tray:     ['....#....','..#.#.#..','...###...','....#....','#.......#','#.......#','###...###','#########','.........'],
+  eye:      ['.........','..#####..','.#.....#.','#..###..#','#..###..#','.#.....#.','..#####..','.........','.........'],
+  undo:     ['..#......','.##......','#########','.##.....#','..#......#','.........#','........#.','..######..','.........'],
+  sliders:  ['..#......','#########','..#......','......#..','#########','......#..','...#.....','#########','...#.....'],
+  link:     ['.....###.','....#...#','....#...#','...#.#.#.','..#.#.#..','.#.#.#...','#...#....','#...#....','.###.....'],
+  lock:     ['..#####..','.#.....#.','.#.....#.','#########','#.......#','#...#...#','#...#...#','#.......#','#########'],
+  check:    ['.........','........#','.......#.','......#..','#....#...','.#..#....','..##.....','...#.....','.........'],
+  x:        ['#.......#','.#.....#.','..#...#..','...#.#...','....#....','...#.#...','..#...#..','.#.....#.','#.......#'],
+  mail:     ['.........','#########','##.....##','#.#...#.#','#..#.#..#','#...#...#','#.......#','#########','.........'],
+  cal:      ['.#.....#.','#########','#.......#','#########','#.#.#.#.#','#.......#','#.#.#.#.#','#########','.........'],
+  film:     ['#########','#.#...#.#','###...###','#.#...#.#','###...###','#.#...#.#','###...###','#.#...#.#','#########'],
+  weight:   ['....#....','...#.#...','....#....','..#####..','.#.....#.','.#.....#.','#.......#','#.......#','#########'],
+  sort:     ['.........','#########','.........','..#####..','.........','....#....','.........','.........','.........'],
+};
+function iconSVG(name) {
+  const rows = ICONS[name]; if (!rows) return '';
+  let r = '';
+  rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] === '#') r += `<rect x="${x}" y="${y}" width="1.02" height="1.02"/>`; });
+  return `<svg viewBox="0 0 9 9" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">${r}</svg>`;
+}
+function paintIcons(root = document) { $$('[data-i]', root).forEach(el => { if (!el.firstChild) el.innerHTML = iconSVG(el.dataset.i); }); }
+paintIcons();
+
+/* ---------- theme ---------- */
+const root = document.documentElement;
+let themePref = 'system';
+try { themePref = localStorage.getItem('orca-theme') || 'system'; } catch (e) {}
+const T = {};
+function readTokens() {
+  const cs = getComputedStyle(root);
+  ['--sea', '--orca', '--orca-glow', '--star'].forEach(k => T[k] = cs.getPropertyValue(k).trim());
+  T.light = root.dataset.theme === 'light' || (!root.dataset.theme && matchMedia('(prefers-color-scheme: light)').matches);
+}
+function applyTheme(t) {
+  themePref = t;
+  if (t === 'system') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', t);
+  $$('[data-theme-set]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeSet === t)));
+  try { localStorage.setItem('orca-theme', t); } catch (e) {}
+  readTokens(); sky.rebuild(); band.rebuild();
+}
+$$('[data-theme-set]').forEach(b => b.addEventListener('click', () => applyTheme(b.dataset.themeSet)));
+matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (themePref === 'system') { readTokens(); sky.rebuild(); band.rebuild(); } });
+
+/* ---------- ordered dither ---------- */
+const BAYER = [0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5].map(v => (v + .5) / 16);
+const bayer = (x, y) => BAYER[(y & 3) * 4 + (x & 3)];
+function rand(seed) { let s = seed >>> 0; return () => ((s = Math.imul(s ^ (s >>> 15), 2246822507) ^ Math.imul(s ^ (s >>> 13), 3266489909)) >>> 0) / 4294967296; }
+
+/* ---------- the orca: the app icon's own outline (tools/icon/orca-paths.json) ---------- */
+const ORCA = /*ORCA_PATHS*//**/{"body":["M 464.6 1142.4 C 458.8 1141.3, 457.1 1138.7, 457.1 1138.7 C 457.1 1138.7, 483.7 1106.5, 496.0 1085.0 C 508.2 1063.4, 520.6 1026.8, 530.4 1009.4 C 540.2 992.0, 546.5 988.6, 554.8 980.8 C 563.0 972.9, 580.1 962.4, 580.1 962.4 C 580.1 962.4, 573.7 953.5, 565.2 946.8 C 556.6 940.2, 542.8 929.6, 528.7 922.3 C 514.6 915.1, 495.7 907.6, 480.6 903.4 C 465.5 899.2, 451.5 897.6, 437.9 897.1 C 424.4 896.5, 411.9 897.9, 399.2 900.2 C 386.6 902.6, 375.1 905.1, 362.0 911.0 C 348.9 916.9, 332.4 926.9, 320.8 935.8 C 309.3 944.8, 300.9 954.7, 292.8 964.8 C 284.8 975.0, 278.7 984.5, 272.7 996.7 C 266.8 1008.9, 261.1 1023.3, 257.2 1038.2 C 253.3 1053.1, 250.3 1071.9, 249.1 1086.1 C 248.0 1100.4, 248.6 1110.9, 250.1 1123.9 C 251.6 1136.8, 258.2 1163.8, 258.2 1163.8 C 258.2 1163.8, 264.5 1131.5, 268.9 1118.9 C 273.2 1106.3, 278.2 1098.2, 284.4 1088.4 C 290.6 1078.6, 297.4 1069.3, 306.3 1060.3 C 315.1 1051.3, 326.1 1041.8, 337.4 1034.4 C 348.7 1027.1, 361.0 1020.9, 374.1 1016.1 C 387.3 1011.4, 401.8 1007.8, 416.1 1006.1 C 430.4 1004.5, 446.6 1004.7, 459.9 1006.1 C 473.1 1007.6, 495.8 1014.7, 495.8 1014.7 C 495.8 1014.7, 470.1 1026.1, 459.7 1031.7 C 449.3 1037.3, 441.6 1042.6, 433.4 1048.4 C 425.3 1054.3, 418.5 1059.4, 410.8 1066.8 C 403.0 1074.2, 394.0 1083.8, 386.8 1092.8 C 379.7 1101.9, 373.0 1112.3, 368.0 1121.0 C 363.1 1129.8, 360.1 1137.3, 357.1 1145.1 C 354.2 1153.0, 351.9 1158.3, 350.2 1168.2 C 348.6 1178.2, 347.2 1195.4, 347.1 1204.9 C 346.9 1214.5, 347.4 1217.1, 349.4 1225.6 C 351.4 1234.1, 354.8 1246.5, 359.0 1256.0 C 363.2 1265.5, 368.5 1274.2, 374.4 1282.6 C 380.4 1291.0, 386.8 1298.7, 394.8 1306.2 C 402.7 1313.8, 412.1 1321.3, 422.0 1328.0 C 431.9 1334.7, 437.5 1339.5, 454.3 1346.7 C 471.2 1353.8, 523.1 1370.9, 523.1 1370.9 C 523.1 1370.9, 523.5 1428.5, 523.5 1428.5 C 523.5 1428.5, 362.0 1430.2, 329.1 1429.9 C 296.2 1429.6, 326.7 1436.8, 326.1 1426.9 C 325.5 1417.0, 330.5 1384.2, 325.3 1370.7 C 320.1 1357.3, 305.5 1356.0, 294.8 1346.2 C 284.0 1336.5, 273.2 1327.4, 260.8 1312.2 C 248.3 1297.0, 231.6 1275.4, 220.0 1255.0 C 208.4 1234.6, 198.8 1212.9, 191.1 1189.9 C 183.5 1166.8, 177.6 1140.2, 174.3 1116.7 C 170.9 1093.3, 170.4 1071.4, 171.0 1049.0 C 171.7 1026.6, 173.9 1005.4, 178.2 982.2 C 182.6 959.1, 188.7 934.1, 197.1 910.1 C 205.5 886.2, 218.3 858.8, 228.7 838.7 C 239.1 818.6, 248.4 805.1, 259.4 789.4 C 270.4 773.8, 279.8 761.0, 294.8 744.8 C 309.7 728.6, 326.5 711.2, 349.3 692.3 C 372.0 673.4, 415.3 644.3, 431.2 631.2 C 447.2 618.2, 441.3 620.4, 445.0 614.0 C 448.7 607.5, 451.6 599.5, 453.4 592.4 C 455.2 585.3, 455.7 579.3, 455.6 571.1 C 455.5 562.9, 456.0 556.6, 452.8 543.2 C 449.5 529.8, 445.9 511.6, 436.3 490.7 C 426.7 469.8, 409.4 439.3, 395.0 418.0 C 380.6 396.8, 350.0 363.2, 350.0 363.2 C 350.0 363.2, 348.3 360.9, 356.3 360.3 C 364.2 359.6, 383.5 358.2, 397.9 359.1 C 412.4 359.9, 427.8 362.1, 442.8 365.2 C 457.8 368.4, 472.5 372.5, 487.9 378.1 C 503.2 383.8, 519.8 391.1, 535.0 399.0 C 550.2 406.9, 565.3 416.5, 579.2 425.8 C 593.1 435.1, 596.1 435.4, 618.2 454.8 C 640.2 474.3, 690.4 523.9, 711.3 542.7 C 732.2 561.5, 734.1 561.4, 743.4 567.6 C 752.8 573.7, 745.6 571.4, 767.4 579.6 C 789.2 587.8, 849.4 607.0, 874.3 616.7 C 899.2 626.4, 903.1 630.3, 917.0 638.0 C 930.8 645.8, 943.8 653.7, 957.6 663.4 C 971.4 673.1, 987.5 685.8, 999.7 696.3 C 1011.9 706.8, 1018.5 712.5, 1030.7 726.3 C 1043.0 740.0, 1060.2 759.6, 1073.0 779.0 C 1085.8 798.4, 1099.8 826.0, 1107.6 842.4 C 1115.4 858.8, 1116.6 866.4, 1119.6 877.4 C 1122.6 888.4, 1125.2 896.0, 1125.7 908.3 C 1126.3 920.5, 1125.8 938.9, 1122.8 950.8 C 1119.8 962.7, 1117.0 969.1, 1107.7 979.7 C 1098.4 990.3, 1082.2 1004.5, 1067.2 1014.2 C 1052.2 1023.9, 1037.9 1031.2, 1017.9 1037.9 C 997.8 1044.5, 973.0 1050.5, 946.9 1053.9 C 920.7 1057.2, 888.8 1058.3, 861.0 1058.0 C 833.2 1057.7, 808.3 1055.2, 780.1 1051.9 C 752.0 1048.5, 714.0 1033.3, 692.0 1037.8 C 670.0 1042.4, 666.3 1065.3, 648.2 1079.2 C 630.0 1093.0, 604.2 1110.6, 583.0 1121.0 C 561.8 1131.4, 535.9 1137.8, 520.8 1141.8 C 505.6 1145.8, 501.4 1144.9, 492.0 1145.0 C 482.6 1145.1, 470.4 1143.4, 464.6 1142.4 Z"],"patch":["M 758.4 730.4 C 768.9 729.3, 776.7 729.9, 788.3 731.7 C 799.8 733.6, 815.6 737.2, 827.6 741.4 C 839.6 745.6, 850.5 751.1, 860.3 756.7 C 870.0 762.3, 877.6 767.9, 886.1 774.9 C 894.6 781.9, 903.1 789.4, 911.1 798.9 C 919.1 808.4, 928.4 821.8, 934.0 832.0 C 939.6 842.3, 943.5 852.6, 944.6 860.4 C 945.7 868.2, 943.7 874.2, 940.6 878.6 C 937.4 883.0, 932.8 885.2, 925.7 886.7 C 918.6 888.3, 907.5 888.4, 898.0 888.0 C 888.6 887.5, 878.2 886.0, 868.9 884.1 C 859.7 882.1, 849.9 879.1, 842.7 876.3 C 835.4 873.6, 832.7 873.5, 825.3 867.7 C 818.0 861.9, 811.3 851.2, 798.5 841.5 C 785.7 831.8, 761.2 819.5, 748.5 809.5 C 735.7 799.6, 727.8 788.8, 722.2 781.8 C 716.7 774.7, 716.4 771.4, 715.0 767.0 C 713.5 762.6, 713.3 758.9, 713.5 755.5 C 713.8 752.0, 714.6 749.4, 716.6 746.6 C 718.5 743.7, 718.4 741.1, 725.4 738.4 C 732.4 735.7, 748.0 731.6, 758.4 730.4 Z"],"chin":["M 808.1 927.1 C 817.5 925.7, 825.2 926.0, 835.8 927.2 C 846.4 928.4, 845.7 926.1, 871.6 934.4 C 897.4 942.7, 964.1 968.0, 990.9 977.1 C 1017.7 986.2, 1019.9 986.1, 1032.2 988.8 C 1044.6 991.4, 1053.9 993.0, 1065.0 993.0 C 1076.1 993.0, 1099.1 988.8, 1099.1 988.8 C 1099.1 988.8, 1079.2 1006.5, 1068.6 1013.6 C 1058.0 1020.7, 1047.4 1026.1, 1035.3 1031.3 C 1023.1 1036.5, 1010.0 1041.0, 995.8 1044.8 C 981.5 1048.5, 965.3 1051.6, 949.8 1053.8 C 934.4 1056.0, 919.9 1057.3, 903.0 1058.0 C 886.0 1058.6, 867.6 1058.8, 848.1 1057.9 C 828.6 1057.1, 811.4 1055.9, 786.2 1052.8 C 761.0 1049.7, 712.3 1041.8, 696.8 1039.2 C 681.3 1036.7, 693.1 1037.6, 693.1 1037.6 C 693.1 1037.6, 683.9 1048.9, 694.0 1035.0 C 704.2 1021.1, 740.0 970.8, 754.3 954.3 C 768.5 937.7, 770.5 940.0, 779.5 935.5 C 788.5 931.0, 798.7 928.5, 808.1 927.1 Z"]}/**/;
+const ORCA_FIN = { x: 383.5, y: 358.2 }, ORCA_NOSE = { x: 1126.3, y: 920.5 }, ORCA_BOTTOM = 1436.8;
+const orcaBody = new Path2D(ORCA.body[0]);
+const orcaWhite = new Path2D(ORCA.patch[0] + ' ' + ORCA.chin[0]);
+
+/* ---------- hero sky: stars, halftone moon, the orca, a dot-matrix sea ---------- */
+const sky = (() => {
+  const cv = $('#sky'), ctx = cv.getContext('2d');
+  let W = 0, H = 0, dpr = 1, stars = [], moon = [], splash = [], place = null;
+  const off = document.createElement('canvas');
+  function layout() {
+    if (W < 720) {
+      const k = W * .5 / (ORCA_NOSE.x - ORCA_FIN.x);
+      return { k, ox: W * .74 - ORCA_NOSE.x * k, oy: H * 1.03 - ORCA_BOTTOM * k, sea: H * .9 };
+    }
+    const k = Math.min(H * .64 / (ORCA_BOTTOM - ORCA_FIN.y), W * .25 / (ORCA_NOSE.x - ORCA_FIN.x));
+    return { k, ox: W * .285 - ORCA_NOSE.x * k, oy: H * 1.06 - ORCA_BOTTOM * k, sea: H * .82 };
+  }
+  function rebuild() {
+    const r = cv.getBoundingClientRect(); dpr = Math.min(2, devicePixelRatio || 1);
+    W = r.width; H = r.height; if (!W || !H) return;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const R = rand(7);
+    stars = Array.from({ length: Math.round(W * H / 9000) }, () => ({ x: R() * W, y: Math.pow(R(), 1.6) * H * .6, s: R() < .15 ? 2 : 1, p: R() * 6.28, sp: .5 + R() * 1.5 }));
+    moon = [];
+    const narrow = W < 720, mR = Math.min(W, H) * (narrow ? .07 : .042), mx = W * (narrow ? .8 : .76), my = H * (narrow ? .15 : .17), g = 5;
+    for (let y = -mR * 1.8; y <= mR * 1.8; y += g) for (let x = -mR * 1.8; x <= mR * 1.8; x += g) {
+      const d = Math.hypot(x, y) / mR;
+      const v = d <= 1 ? 1 - .45 * clamp((x + y) / (2 * mR) + .3, 0, 1) : Math.max(0, .5 - (d - 1) * .7);
+      if (v <= .02 || (d > 1 && bayer((x / g) | 0, (y / g) | 0) > v * 1.4)) continue;
+      moon.push({ x: mx + x, y: my + y, s: d <= 1 ? 1.4 + v * 2.2 : 1.2, a: d <= 1 ? .5 + v * .5 : v * .7 });
+    }
+    buildOrca();
+  }
+  function buildOrca() {
+    place = layout();
+    const { k, ox, oy } = place;
+    off.width = Math.round(W * dpr); off.height = Math.round(H * dpr);
+    const o = off.getContext('2d');
+    const toOrca = c => { c.translate(ox, oy); c.scale(k, k); };
+    // silhouette with a soft glow
+    o.setTransform(dpr, 0, 0, dpr, 0, 0); o.clearRect(0, 0, W, H);
+    o.save(); toOrca(o);
+    o.shadowColor = T['--orca-glow']; o.shadowBlur = 70 * k * dpr;
+    o.fillStyle = T['--orca'] || '#010205'; o.fill(orcaBody);
+    o.shadowBlur = 0;
+    // rim light on the upper edge: stroke the outline, nudged down, clipped to the body
+    o.clip(orcaBody); o.translate(0, 4 / k);
+    o.lineWidth = 2.4 / k; o.strokeStyle = T.light ? 'rgba(150,180,240,.4)' : 'rgba(150,185,255,.5)';
+    o.stroke(orcaBody);
+    o.restore();
+    // eye patch and chin as a dense dot matrix (the pixel version of the icon's white)
+    const m = document.createElement('canvas'); m.width = Math.ceil(W); m.height = Math.ceil(H);
+    const mc = m.getContext('2d'); mc.save(); toOrca(mc); mc.fillStyle = '#fff'; mc.fill(orcaWhite); mc.restore();
+    const md = mc.getImageData(0, 0, m.width, m.height).data;
+    const g = W < 720 ? 3 : 4, ds = g - .9;
+    o.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (let y = 0; y < m.height; y += g) for (let x = 0; x < m.width; x += g) {
+      const a = md[((y | 0) * m.width + (x | 0)) * 4 + 3] / 255;
+      if (a < .02 || (a < 1 && bayer(x / g, y / g) > a)) continue;
+      o.fillStyle = `rgba(240,245,255,${.85 + .15 * a})`; o.fillRect(x, y, ds, ds);
+    }
+    const R = rand(11); splash = [];
+    const x0 = ox + 170 * k, x1 = ox + 760 * k;
+    for (let n = 0; n < 70; n++) splash.push({ x: x0 + R() * (x1 - x0), y: place.sea - Math.pow(R(), 2) * H * .1, p: R() * 6.28 });
+  }
+  let raf = 0, visible = true, a = 0, rise = reduce ? 1 : 0;
+  const t0 = performance.now();
+  function frame(now) {
+    raf = 0;
+    if (!W || !place) return;
+    const t = (now - t0) / 1000;
+    if (rise < 1) rise = reduce ? 1 : clamp((now - t0) / 1300, 0, 1);
+    const r = easeOut(rise);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const sc = T['--star'] || '220,230,255';
+    if (!T.light) for (const s of stars) { ctx.fillStyle = `rgba(${sc},${(.25 + .55 * (.5 + .5 * Math.sin(s.p + t * s.sp))) * (1 - a * .6) * r})`; ctx.fillRect(s.x, s.y, s.s, s.s); }
+    ctx.fillStyle = T.light ? '#fff' : `rgb(${sc})`;
+    for (const d of moon) { ctx.globalAlpha = d.a * (T.light ? .9 : .6) * r; ctx.fillRect(d.x - d.s / 2, d.y - d.s / 2, d.s * .8, d.s * .8); }
+    // the orca leads the entrance (rises out of the sea), and dives as the hero folds up
+    const ox = -a * W * .1, oy = a * H * .55 + (1 - r) * H * .14 + (reduce ? 0 : Math.sin(t * .6) * 3);
+    ctx.globalAlpha = clamp(1 - a * 1.3, 0, 1) * clamp(r * 1.4, 0, 1);
+    if (ctx.globalAlpha > 0) ctx.drawImage(off, ox, oy, W, H);
+    ctx.globalAlpha = 1;
+    const sea = T['--sea'] || '157,187,255', g = W < 720 ? 7 : 9;
+    for (let x = 0; x < W + g; x += g) {
+      const h = place.sea + Math.sin(x * .006 + t * .5) * 7 + Math.sin(x * .017 - t * .8) * 3;
+      const cx = (x / g) | 0;
+      for (let y = Math.floor(h / g) * g; y < H; y += g) {
+        const depth = (y - h) / (H - h + 1);
+        if (bayer(cx, (y / g) | 0) > .14 + depth * .9) continue;
+        ctx.fillStyle = `rgba(${sea},${.25 + depth * .55})`;
+        ctx.fillRect(x, y, 2.4, 2.4);
+      }
+    }
+    ctx.fillStyle = `rgba(${sea},.7)`;
+    for (const s of splash) { ctx.globalAlpha = clamp(1 - a * 1.5, 0, 1) * r * (.4 + .4 * Math.sin(t + s.p)); ctx.fillRect(s.x + ox, s.y + oy * .4 + Math.sin(t * 1.4 + s.p) * 2, 2.4, 2.4); }
+    ctx.globalAlpha = 1;
+    if (visible && (!reduce || rise < 1)) raf = requestAnimationFrame(frame);
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(frame); }
+  return { rebuild() { rebuild(); kick(); }, set(v) { a = v; kick(); }, show(v) { visible = v; if (v) kick(); } };
+})();
+
+/* ---------- sea band (privacy section) ---------- */
+const band = (() => {
+  const cv = $('#seaBand'), ctx = cv.getContext('2d');
+  let W = 0, H = 0, dpr = 1, raf = 0, on = false;
+  const fin = new Path2D('M -26 4 C -22 -20 -18 -40 -14 -58 C -4 -34 8 -12 22 4 Z');
+  function rebuild() { const r = cv.getBoundingClientRect(); dpr = Math.min(2, devicePixelRatio || 1); W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; draw(performance.now()); }
+  function draw(now) {
+    raf = 0; if (!W) return;
+    const t = now / 1000, sea = T.light ? '36,78,190' : '235,240,255', g = 8;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    ctx.save(); ctx.translate(((t * 30) % (W + 300)) - 150, H * .38); ctx.fillStyle = T['--orca'] || '#010205'; ctx.fill(fin); ctx.restore();
+    for (let x = 0; x < W + g; x += g) {
+      const h = H * .36 + Math.sin(x * .008 + t * .7) * 6 + Math.sin(x * .02 - t) * 2;
+      for (let y = Math.floor(h / g) * g; y < H; y += g) {
+        const depth = (y - h) / (H - h + 1);
+        if (bayer((x / g) | 0, (y / g) | 0) > .3 + depth) continue;
+        ctx.fillStyle = `rgba(${sea},${.45 + depth * .5})`; ctx.fillRect(x, y, 2.6, 2.6);
+      }
+    }
+    if (on && !reduce) raf = requestAnimationFrame(draw);
+  }
+  new IntersectionObserver(es => { on = es[0].isIntersecting; if (on && !raf) raf = requestAnimationFrame(draw); }).observe(cv);
+  return { rebuild };
+})();
+
+/* ---------- hero scroll choreography ----------
+   Styles are written straight onto the elements that move (not as inherited CSS variables on the
+   scene), so a scroll frame never restyles the whole demo subtree. */
+const hero = $('#top'), scene = $('#scene'), copy = $('#heroCopy'), hint = $('#scrollHint'), ready = $('#heroReady'), demoWrap = $('#demo'), laptop = $('#laptop');
+let D = null;
+function measure() {
+  const vw = innerWidth, vh = innerHeight, compact = vw < 720;
+  demoWrap.classList.toggle('compact', compact);
+  const side = Math.max(compact ? 10 : 16, (vw - 1280) / 2), top = compact ? 62 : 74, bottom = compact ? 10 : 20;
+  const cw = vw - side * 2, ch = vh - top - bottom;
+  const dw = compact ? 600 : 1120, dh = compact ? 1010 : 760;
+  D = { side, top, bottom, s: Math.min((cw - (compact ? 16 : 80)) / dw, (ch - (compact ? 20 : 70)) / dh, 1), cy: top + ch / 2 - vh / 2 };
+}
+let lastP = -1;
+function onScroll() {
+  const r = hero.getBoundingClientRect();
+  const travel = r.height - innerHeight;
+  const p = clamp(-r.top / travel, 0, 1);
+  document.body.classList.toggle('nav-on', p > .04 || r.bottom < innerHeight);
+  document.body.classList.toggle('past-hero', p > .1 || r.bottom < innerHeight);
+  sky.show(r.bottom > 0);
+  if (Math.abs(p - lastP) < .0005) return; lastP = p;
+  if (!D) measure();
+  // 1. the scene folds into a card (on-screen movement: ease-in-out)
+  const a = easeInOut(span(p, 0, .24));
+  scene.style.clipPath = `inset(${(a * D.top).toFixed(1)}px ${(a * D.side).toFixed(1)}px ${(a * D.bottom).toFixed(1)}px ${(a * D.side).toFixed(1)}px round ${(a * 28).toFixed(1)}px)`;
+  laptop.style.transform = `translate3d(${(a * 45).toFixed(2)}vw,0,0)`;
+  // 2. the headline leaves first, blurred so the swap reads as one motion
+  const c = span(p, .03, .15);
+  copy.style.opacity = hint.style.opacity = (1 - c).toFixed(3);
+  copy.style.transform = `translate3d(0,${(-c * 40).toFixed(1)}px,0)`;
+  copy.style.filter = c > 0 ? `blur(${(c * 8).toFixed(1)}px)` : '';
+  // 3. a beat of "Ready to see how it works?"
+  const rIn = span(p, .16, .22), rOut = span(p, .3, .36), ro = rIn * (1 - rOut);
+  ready.style.opacity = ro.toFixed(3);
+  ready.style.transform = `translate3d(0,${((1 - rIn) * 16 - rOut * 24).toFixed(1)}px,0)`;
+  ready.classList.toggle('live', ro > .5);
+  // 4. the demo window arrives (entering: ease-out) and starts playing
+  const dm = easeOut(span(p, .32, .44));
+  demoWrap.style.opacity = dm.toFixed(3);
+  demoWrap.style.transform = `translate3d(0,${(D.cy + (1 - dm) * 60).toFixed(1)}px,0) scale(${(D.s * (.96 + .04 * dm)).toFixed(4)})`;
+  demoWrap.classList.toggle('live', dm > .5);
+  sky.set(a);
+  if (dm > .6) demo.play(); else if (p < .2) demo.pause();
+}
+addEventListener('scroll', onScroll, { passive: true });
+addEventListener('resize', () => { lastP = -1; measure(); sky.rebuild(); band.rebuild(); onScroll(); tour.sync(); });
+$$('[data-play]').forEach(b => b.addEventListener('click', e => {
+  e.preventDefault();
+  const r = hero.getBoundingClientRect(), travel = r.height - innerHeight;
+  scrollTo({ top: scrollY + r.top + travel * .47, behavior: reduce ? 'auto' : 'smooth' });
+}));
+
+/* ---------- the demo (mirrors the real search screen: results + inspector) ---------- */
+const demo = (() => {
+  const win = $('#win'), dq = $('#dq'), under = $('#dunder'), grid = $('#dgrid'), count = $('#dcount'), sub = $('#dsub'), insp = $('#insp');
+  const steps = $$('.step');
+  const homeUnder = under.innerHTML;
+  const pdf = (cls, extra = '') => `<div class="pdf ${cls}"><i class="t"></i><i></i><i></i><i style="width:60%"></i>${extra}</div>`;
+  const notes = `<div class="shot"><b>Home wifi password</b>Network: OrcaHome-5G<br>Password: tidepool-42<br>Guest: OrcaGuest<br>Router admin: admin / ••••••</div>`;
+  const filters = `<span class="chip plain pop" style="animation-delay:420ms"><span class="px-icon" data-i="cal"></span>Any date</span><span class="chip plain save pop" style="animation-delay:480ms"><span class="px-icon" data-i="folder"></span>Save as smart folder</span>`;
+  const SCENES = [
+    { mode: 'type', q: 'the PDF with the blue cover',
+      chips: [['', 'doc', 'Documents'], ['', 'doc', 'PDF'], ['magic', 'sparkle', 'Looks: blue cover']],
+      head: ['3 results', 'matched by name, text inside and what’s on the cover'],
+      files: [
+        { thumb: pdf('blue'), tag: 'PDF', name: 'Field guide to orcas.pdf', meta: '4.2 MB · Google Drive', best: 'Looks like a blue cover' },
+        { thumb: pdf(''), tag: 'PDF', name: 'Q3 report — final.pdf', meta: '1.1 MB · Gmail' },
+        { thumb: pdf('teal'), tag: 'PDF', name: 'Tide tables 2026.pdf', meta: '820 KB · Safari' } ],
+      insp: { pv: `<div class="pdf blue" style="inset:12px 34% 0 34%"><i class="t"></i><i></i><i></i></div>`, name: 'Field guide to orcas.pdf', meta: 'PDF document · 4.2 MB · 48 pages',
+        why: [['Looks like', 'blue cover · strong match'], ['Also', 'document · book'], ['Found by', 'looking at the cover']] } },
+    { mode: 'voice', q: 'screenshots with the wifi password',
+      chips: [['', 'image', 'Screenshots'], ['', 'scan', '“wifi password”']],
+      head: ['3 results', 'found by reading the text inside each screenshot'],
+      files: [
+        { thumb: notes, tag: 'PNG', name: 'Screenshot 2026-11-06 at notes-wifi.png', meta: '613 KB · Desktop', best: 'Text: “wifi password”' },
+        { thumb: `<div class="shot set"><div><span>Network name</span><span>Office-5G</span></div><div><span>Security</span><span>WPA3</span></div><div><span>Password</span><span>SeaOtter42</span></div><div><span>Router</span><span>192.168.1.1</span></div></div>`, tag: 'PNG', name: 'Screenshot 2026-11-02 at wifi-settings.png', meta: '488 KB · Desktop' },
+        { thumb: `<div class="shot chat"><i>Welcome to the new floor 🎉</i><i style="--c:#36c5d0">Guest wifi for visitors:</i><i style="--c:#36c5d0">OrcaGuest · tidepool-2026</i><i style="--c:#e0455a">Thanks!</i></div>`, tag: 'PNG', name: 'Screenshot 2026-11-01 at wifi-chat.png', meta: '204 KB · Desktop' } ],
+      insp: { pv: notes.replace('class="shot"', 'class="shot" style="inset:10px 20px 0;font-size:10px"'), name: 'Screenshot 2026-11-06 at notes-wifi.png', meta: 'PNG image · 613 KB · 2400 × 1560',
+        ocr: 'Home <mark>wifi</mark> <mark>password</mark><br>Network: OrcaHome-5G<br><mark>Password</mark>: tidepool-42<br>Guest: OrcaGuest' } },
+    { mode: 'type', q: 'invoices from gmail last month',
+      chips: [['', 'mail', 'From Gmail'], ['', 'cal', 'October 2026'], ['', 'scan', '“invoice”']],
+      head: ['3 results', 'downloaded from mail.google.com in October'],
+      files: [
+        { thumb: pdf('', '<i style="width:40%;height:10px;background:#EA4335;margin-top:6px"></i>'), tag: 'PDF', name: 'Invoice 2291 Acme Corp.pdf', meta: 'Oct 12 · 15 KB', src: ['Gmail', '#EA4335'], best: 'Downloaded from Gmail' },
+        { thumb: pdf(''), tag: 'PDF', name: 'INV-2026-118 Acme.pdf', meta: 'Oct 3 · 15 KB', src: ['Gmail', '#EA4335'] },
+        { thumb: pdf('cream'), tag: 'PDF', name: 'Acme_invoice_Oct.pdf', meta: 'Oct 27 · 15 KB', src: ['Gmail', '#EA4335'] } ],
+      insp: { pv: `<div class="pdf" style="inset:12px 34% 0 34%"><i class="t"></i><i></i><i></i><i style="width:40%;height:10px;background:#EA4335;margin-top:6px"></i></div>`, name: 'Invoice 2291 Acme Corp.pdf', meta: 'PDF document · 15 KB',
+        why: [['From', 'Gmail · mail.google.com'], ['When', '12 October 2026'], ['Text', '“Invoice 2291”']] } },
+  ];
+  let idx = 0, playing = false, timers = [], stepStart = 0, stepDur = 9000, barRaf = 0;
+  const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+  const clear = () => { timers.forEach(clearTimeout); timers = []; };
+  function reset() {
+    win.className = 'win'; dq.innerHTML = '<span class="ph">Try “the PDF with the blue cover”</span>';
+    under.innerHTML = homeUnder; paintIcons(under); grid.innerHTML = ''; insp.innerHTML = '';
+  }
+  const chipsHTML = chips => '<span class="eyebrow">Understood as</span>' + chips.map(([tone, ic, label], i) =>
+    `<span class="chip ${tone} pop" style="animation-delay:${i * 60}ms"><span class="px-icon" data-i="${ic}"></span>${label}<span class="px-icon x" data-i="x"></span></span>`).join('') + filters;
+  const fileHTML = f => `<div class="fcard"><div class="thumb">${f.thumb}<span class="tag">${f.tag}</span>${f.src ? `<span class="src" style="background:${f.src[1]}">${f.src[0]}</span>` : ''}</div>
+      <div class="fname">${f.name}</div><div class="fmeta">${f.meta}</div>${f.best ? `<span class="why"><span class="px-icon" data-i="sparkle"></span>${f.best}</span>` : ''}</div>`;
+  const inspHTML = i => `<div class="pv">${i.pv}</div><div class="nm">${i.name}</div><div class="mt">${i.meta}</div>
+      <div class="acts"><span>${i.ocr ? 'Copy text' : 'Open'}</span><span>${i.ocr ? 'Open' : 'Quick Look'}</span><span>Show in Finder</span></div>
+      ${i.why ? `<h4>Why it matched</h4><dl>${i.why.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>` : ''}
+      ${i.ocr ? `<h4>Text found in image</h4><div class="ocr">${i.ocr}</div>` : ''}`;
+  function run(i) {
+    clear(); reset(); idx = i;
+    const s = SCENES[i];
+    steps.forEach((b, j) => { b.classList.toggle('on', j === i); b.setAttribute('aria-selected', String(j === i)); $('.bar', b).style.transform = `scaleX(${j < i ? 1 : 0})`; });
+    stepStart = performance.now(); tickBar();
+    let t = 500;
+    if (s.mode === 'voice') {
+      later(() => { win.classList.add('focused', 'voice'); dq.innerHTML = '<span class="wave"><i></i><i></i><i></i><i></i><i></i></span><span class="listening">Listening…</span>'; }, t);
+      t += 1300;
+      const words = s.q.split(' ');
+      words.forEach((w, k) => later(() => { dq.innerHTML = '<span class="wave"><i></i><i></i><i></i><i></i><i></i></span>' + words.slice(0, k + 1).join(' '); }, t + k * 260));
+      t += words.length * 260 + 500;
+      later(() => { win.classList.remove('voice'); dq.innerHTML = s.q; }, t);
+    } else {
+      later(() => { win.classList.add('focused'); dq.innerHTML = '<span class="caret"></span>'; }, t);
+      t += 350;
+      for (let k = 1; k <= s.q.length; k++) later(() => { dq.innerHTML = s.q.slice(0, k) + '<span class="caret"></span>'; }, t + k * 55);
+      t += s.q.length * 55 + 350;
+    }
+    later(() => { win.classList.add('searching'); under.innerHTML = chipsHTML(s.chips); paintIcons(under); }, t);
+    t += 600;
+    later(() => {
+      count.textContent = s.head[0]; sub.textContent = s.head[1];
+      grid.innerHTML = s.files.map(fileHTML).join(''); insp.innerHTML = inspHTML(s.insp); paintIcons(grid);
+      win.classList.add('has-results');
+      $$('.fcard', grid).forEach((c, k) => setTimeout(() => c.classList.add('in'), 50 * k));
+    }, t);
+    t += 900;
+    later(() => { $$('.fcard', grid).forEach((c, k) => c.classList.add(k ? 'dim' : 'best')); win.classList.add('inspect'); }, t);
+    stepDur = t + 3600;
+    later(() => run((idx + 1) % SCENES.length), stepDur);
+  }
+  function tickBar() {
+    cancelAnimationFrame(barRaf);
+    const bar = $('.bar', steps[idx]);
+    const f = () => { bar.style.transform = `scaleX(${clamp((performance.now() - stepStart) / stepDur, 0, 1).toFixed(4)})`; if (playing) barRaf = requestAnimationFrame(f); };
+    f();
+  }
+  steps.forEach(b => b.addEventListener('click', () => { playing = true; run(+b.dataset.step); }));
+  document.addEventListener('visibilitychange', () => { if (document.hidden && playing) { playing = false; clear(); cancelAnimationFrame(barRaf); } else if (!document.hidden && demoWrap.classList.contains('live')) demo.play(); });
+  return {
+    play() { if (playing) return; playing = true; run(idx); },
+    pause() { if (!playing) return; playing = false; clear(); cancelAnimationFrame(barRaf); reset(); },
+  };
+})();
+
+/* ---------- sources marquee ---------- */
+const SOURCES = [['Gmail','#EA4335'],['Google Drive','#1FA463'],['ChatGPT','#10A37F'],['Claude','#D97757'],['Canva','#00C4CC'],['Slack','#611F69'],['WhatsApp','#25D366'],['GitHub','#8b949e'],['Dropbox','#0061FF'],['Notion','#9b9b9b'],['Figma','#A259FF'],
+  ['Discord','#5865F2'],['Telegram','#229ED9'],['Outlook','#0A64AD'],['iCloud','#3693F3'],['WeTransfer','#409FFF'],['YouTube','#FF0000'],['LinkedIn','#0A66C2'],['Reddit','#FF4500'],['X','#8b949e'],['Extensions','#7C5CFF'],['AirDrop','#5aa2ff']];
+const half = Math.ceil(SOURCES.length / 2);
+const row = list => { const h = list.map(([n, c]) => `<span class="src-name" style="--c:${c}"><i></i>${n}</span>`).join(''); return h + h.replace(/<span class="src-name"/g, '<span aria-hidden="true" class="src-name"'); };
+$('#trackA').innerHTML = row(SOURCES.slice(0, half));
+$('#trackB').innerHTML = row(SOURCES.slice(half));
+
+/* ---------- plain-English examples ---------- */
+const ASKS = [
+  { q: 'the tiger photo I downloaded', chips: [['', 'image', 'Images'], ['magic', 'sparkle', 'Looks: tiger'], ['', 'download', 'Downloads']], mini: 'linear-gradient(135deg,#f0a43a,#7a3b0c)', name: 'IMG_4471.jpg', why: 'Matched by what is in the picture' },
+  { q: 'the receipt that says oat milk', chips: [['', 'image', 'Photos & screenshots'], ['', 'scan', 'Text inside: “oat milk”']], mini: 'linear-gradient(135deg,#ffffff,#d9dce3)', name: 'IMG_0918.HEIC', why: 'Found “Oat milk 2 × 3.40” in the photo' },
+  { q: 'the deck Priya sent on Slack', chips: [['', 'download', 'From Slack'], ['', 'doc', 'Presentations'], ['', 'scan', '“Priya”']], mini: 'linear-gradient(135deg,#7b4bd1,#3a1c75)', name: 'Q4 roadmap v3.key', why: 'Downloaded from files.slack.com' },
+  { q: 'videos over 500 MB from last summer', chips: [['', 'film', 'Videos'], ['', 'weight', 'Over 500 MB'], ['', 'cal', 'Jun – Aug 2026']], mini: 'linear-gradient(135deg,#2c3340,#0e1116)', name: 'Lake day 4K.mov', why: '2.1 GB · 14 Jul 2026' },
+];
+const askQ = $('#askQ'), askChips = $('#askChips'), askRes = $('#askRes');
+let askTimers = [], askIdx = 0, askAuto = 0, askSeen = false;
+const askChipHTML = (chips, pop) => chips.map(([tone, ic, l], j) => `<span class="chip ${tone}${pop ? ' pop' : ''}" style="animation-delay:${j * 60}ms"><span class="px-icon" data-i="${ic}"></span>${l}</span>`).join('');
+function fillAskResult(a) { $('#askMini').style.background = a.mini; $('#askName').textContent = a.name; $('#askWhy').textContent = a.why; }
+function showAsk(i) {
+  askTimers.forEach(clearTimeout); askTimers = []; askIdx = i;
+  $$('#askTabs button').forEach((b, j) => b.setAttribute('aria-selected', String(j === i)));
+  const a = ASKS[i];
+  if (reduce) { askQ.innerHTML = a.q; askChips.innerHTML = askChipHTML(a.chips, false); paintIcons(askChips); fillAskResult(a); askRes.classList.add('in'); return; }
+  askChips.innerHTML = ''; askRes.classList.remove('in');
+  askQ.innerHTML = '<span class="caret"></span>';
+  for (let k = 1; k <= a.q.length; k++) askTimers.push(setTimeout(() => { askQ.innerHTML = a.q.slice(0, k) + '<span class="caret"></span>'; }, k * 34));
+  const t = a.q.length * 34 + 200;
+  askTimers.push(setTimeout(() => { askChips.innerHTML = askChipHTML(a.chips, true); paintIcons(askChips); }, t));
+  askTimers.push(setTimeout(() => { fillAskResult(a); askRes.classList.add('in'); }, t + 300));
+}
+$$('#askTabs button').forEach(b => b.addEventListener('click', () => { clearInterval(askAuto); showAsk(+b.dataset.ask); }));
+// resting state is complete; typing replays once the panel is on screen
+askQ.innerHTML = ASKS[0].q; askChips.innerHTML = askChipHTML(ASKS[0].chips, false); paintIcons(askChips); fillAskResult(ASKS[0]); askRes.classList.add('in');
+new IntersectionObserver(es => {
+  if (es[0].isIntersecting && !askSeen) { askSeen = true; showAsk(0); if (!reduce) askAuto = setInterval(() => showAsk((askIdx + 1) % ASKS.length), 5200); }
+}, { threshold: .5 }).observe($('.ask-panel'));
+
+/* ---------- feature rail ---------- */
+const rail = $('#rail');
+$$('[data-rail]').forEach(b => b.addEventListener('click', () => rail.scrollBy({ left: +b.dataset.rail * 358, behavior: reduce ? 'auto' : 'smooth' })));
+$$('.eqbars').forEach(el => { el.innerHTML = Array.from({ length: 22 }, (_, i) => `<i style="width:5px;height:${10 + ((i * 7) % 19)}px;background:rgba(255,255,255,.75);transform-origin:bottom;animation:eq ${0.7 + (i % 5) * .13}s ${i * .05}s ease-in-out infinite"></i>`).join(''); });
+
+/* ---------- tour (real screenshots) ---------- */
+const TOUR = [
+  ['t-home', 'Home', 'Ask anything, or start from your library'],
+  ['t-search', 'Search', '“screenshots with wifi password”, with why each one matched'],
+  ['t-home-dark', 'Dark mode', 'Follows macOS, or pick one in Settings'],
+  ['t-library', 'Library', 'Kinds and your own smart folders'],
+  ['t-downloads', 'Downloads', 'Every download, grouped by where it came from'],
+  ['t-duplicates', 'Duplicates', 'Pick the copy to keep; the rest go to the Trash'],
+  ['t-captures', 'Captures', 'Everything you grabbed, with what you said'],
+  ['t-capture', 'A capture', 'The note, the link, the reminder and the collection'],
+  ['t-captures-dark', 'Captures, dark', ''],
+];
+const tour = (() => {
+  const railEl = $('#tourRail'), pager = $('#pager'), ind = $('#pagerInd');
+  railEl.innerHTML = TOUR.map(([f, t, d], i) => `<figure class="tour-item${i ? '' : ' cur'}"><div class="shot-frame"><img src="assets/screens/${f}.webp" alt="${t} screen of Orca Find${d ? ': ' + d : ''}" width="1600" height="1075" loading="lazy"></div><figcaption>${t}<span>${d}</span></figcaption></figure>`).join('');
+  pager.insertAdjacentHTML('beforeend', TOUR.map(([, t], i) => `<button type="button" role="tab" aria-label="${t}" aria-selected="${i === 0}" data-go="${i}"></button>`).join(''));
+  const items = $$('.tour-item', railEl), dots = $$('[data-go]', pager);
+  let cur = 0;
+  function sync() {
+    const mid = railEl.scrollLeft + railEl.clientWidth / 2;
+    let best = 0, bd = Infinity;
+    items.forEach((it, i) => { const d = Math.abs(it.offsetLeft + it.offsetWidth / 2 - mid); if (d < bd) { bd = d; best = i; } });
+    if (best !== cur || !ind.dataset.ready) {
+      cur = best; ind.dataset.ready = 1;
+      items.forEach((it, i) => it.classList.toggle('cur', i === cur));
+      dots.forEach((d, i) => d.setAttribute('aria-selected', String(i === cur)));
+      ind.style.transform = `translateX(${dots[cur].offsetLeft - 14}px)`;
+    }
+  }
+  railEl.addEventListener('scroll', () => requestAnimationFrame(sync), { passive: true });
+  dots.forEach((d, i) => d.addEventListener('click', () => {
+    const it = items[i]; railEl.scrollTo({ left: it.offsetLeft - (railEl.clientWidth - it.offsetWidth) / 2, behavior: reduce ? 'auto' : 'smooth' });
+  }));
+  return { sync };
+})();
+
+/* ---------- scroll reveal for screenshots below the fold ---------- */
+const revealObs = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.remove('pre'); revealObs.unobserve(e.target); } }), { rootMargin: '0px 0px -12% 0px' });
+$$('.reveal').forEach(el => { if (el.getBoundingClientRect().top > innerHeight) { el.classList.add('pre'); revealObs.observe(el); } });
+
+/* ---------- statement reveal ---------- */
+const reveal = $('#reveal');
+reveal.innerHTML = reveal.textContent.split(' ').map(w => `<span class="w">${w}</span>`).join(' ');
+const words = $$('.w', reveal);
+function onReveal() {
+  const r = reveal.getBoundingClientRect();
+  const p = clamp((innerHeight * .85 - r.top) / (innerHeight * .6), 0, 1);
+  words.forEach((w, i) => { w.style.opacity = (.22 + .78 * clamp(p * words.length - i, 0, 1)).toFixed(2); });
+}
+addEventListener('scroll', onReveal, { passive: true });
+
+/* ---------- terminal typing ---------- */
+const runs = $$('.code .run');
+runs.forEach(r => r.innerHTML = `<span class="k">$</span> ${r.dataset.type.replace(/"(.*)"/, '"<span class="s">$1</span>"')}`);
+let typed = false;
+new IntersectionObserver(es => {
+  if (!es[0].isIntersecting || typed || reduce) return; typed = true;
+  let delay = 0;
+  runs.forEach((r, i) => {
+    const full = r.dataset.type;
+    r.innerHTML = '<span class="k">$</span> ';
+    for (let k = 1; k <= full.length; k++) setTimeout(() => {
+      const s = full.slice(0, k).replace(/"(.*)$/, '"<span class="s">$1</span>');
+      r.innerHTML = `<span class="k">$</span> ${s}${k < full.length || i === runs.length - 1 ? '<span class="cur"></span>' : ''}`;
+    }, delay + k * 22);
+    delay += full.length * 22 + 380;
+  });
+}, { threshold: .5 }).observe($('.code'));
+
+/* ---------- pricing ---------- */
+$$('[data-bill]').forEach(b => b.addEventListener('click', () => {
+  if (b.getAttribute('aria-pressed') === 'true') return;
+  $$('[data-bill]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  const yearly = b.dataset.bill === 'yearly', num = $('#proPrice');
+  num.classList.add('swap');
+  setTimeout(() => {
+    num.textContent = yearly ? '4' : '5';
+    $('#proUnit').textContent = yearly ? '/month, billed yearly' : '/month';
+    $('#saveTag').hidden = !yearly;
+    num.classList.remove('swap');
+  }, reduce ? 0 : 120);
+}));
+
+/* ---------- nav highlight ---------- */
+const navLinks = $$('.pill-nav a[data-nav]');
+const navObs = new IntersectionObserver(es => es.forEach(e => {
+  if (e.isIntersecting) navLinks.forEach(a => a.classList.toggle('on', a.dataset.nav === e.target.id));
+}), { rootMargin: '-45% 0px -50% 0px' });
+['top', 'features', 'captures', 'tour', 'pricing', 'faq'].forEach(id => { const el = document.getElementById(id); if (el) navObs.observe(el); });
+
+/* ---------- signup (no backend yet) ---------- */
+$('#signup').addEventListener('submit', e => {
+  e.preventDefault();
+  const v = $('#email').value.trim(), msg = $('#signupMsg'), ok = /.+@.+\..+/.test(v);
+  msg.style.color = ok ? 'var(--success-fg)' : 'var(--crit-fg)';
+  msg.textContent = ok ? 'Thanks. We’ll write when there’s news.' : 'Enter an email address like you@example.com.';
+});
+
+/* ---------- start ---------- */
+readTokens();
+applyTheme(themePref);
+measure(); onScroll(); onReveal(); tour.sync();
+document.fonts?.ready.then(() => { lastP = -1; onScroll(); tour.sync(); });
+})();
+</script>
+</body>
+</html>

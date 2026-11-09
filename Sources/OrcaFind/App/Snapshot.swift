@@ -47,6 +47,7 @@ enum Snapshot {
                 return FileManager.default.fileExists(atPath: u.path) ? FileScanner.Root(url: u, name: name, maxDepth: 6) : nil
             }
         }
+        if args.contains("--captures-only") { runCaptures(outDir); return }
         let state = AppState.shared
         let prefs = Preferences.shared
         let wasOnboarded = prefs.onboarded

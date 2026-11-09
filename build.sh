@@ -11,18 +11,9 @@ swift build -c "$CONFIG" 2>&1 | grep -E "error|Compiling|Build complete" | grep 
 BIN=".build/$CONFIG/OrcaFind"
 [[ -x "$BIN" ]] || { echo "Build failed"; exit 1; }
 
-if [[ ! -f Resources/AppIcon.icns ]]; then
+if [[ ! -f Resources/AppIcon.icns || ! -f Resources/MenuBarIcon.png ]]; then
   echo "▸ Drawing app icon…"
-  TMP=$(mktemp -d)
-  swift tools/make_icon.swift "$TMP/icon_1024.png" >/dev/null
-  ICONSET="$TMP/AppIcon.iconset"
-  mkdir -p "$ICONSET"
-  for s in 16 32 128 256 512; do
-    sips -z $s $s "$TMP/icon_1024.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
-    sips -z $((s*2)) $((s*2)) "$TMP/icon_1024.png" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
-  done
-  iconutil -c icns "$ICONSET" -o Resources/AppIcon.icns
-  rm -rf "$TMP"
+  python3 tools/icon/make_icon.py >/dev/null
 fi
 
 echo "▸ Assembling app bundle…"
@@ -31,6 +22,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/OrcaFind"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp Resources/MenuBarIcon.png Resources/MenuBarIcon@2x.png "$APP/Contents/Resources/"
 cp -R Resources/Fonts Resources/Backgrounds "$APP/Contents/Resources/"
 # MobileCLIP-S2 (~190 MB) for describing pictures; fetched + compiled once by tools/fetch_mobileclip.sh.
 [[ -d Resources/Models/mobileclip_s2_text.mlmodelc ]] || ./tools/fetch_mobileclip.sh

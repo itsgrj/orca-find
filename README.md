@@ -11,7 +11,7 @@ Requires macOS 14 Sonoma or later. Release build is about 6 MB.
 ./build.sh debug               # faster compile while developing
 ```
 
-The script uses only the Command Line Tools (no Xcode needed). It compiles with SwiftPM, draws the icon (`tools/make_icon.swift`), assembles the bundle and signs it ad-hoc. The first launch asks for Desktop, Documents and Downloads access.
+The script uses only the Command Line Tools (no Xcode needed). It compiles with SwiftPM, uses the committed icon (`Resources/AppIcon.icns`; regenerate with `python3 tools/icon/make_icon.py`), assembles the bundle and signs it ad-hoc. The first launch asks for Desktop, Documents and Downloads access.
 
 Developer hooks, run from the terminal:
 

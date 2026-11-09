@@ -7,6 +7,7 @@ struct OrcaFindApp: App {
     @State private var state = AppState.shared
 
     init() {
+        MCPServer.runIfRequested()
         DebugCLI.runIfRequested()
     }
 
@@ -14,6 +15,7 @@ struct OrcaFindApp: App {
         Window("Orca Find", id: "main") {
             MainView()
                 .environment(state)
+                .environment(CaptureLibrary.shared)
                 .frame(minWidth: 1080, minHeight: 720)
                 .onOpenURL { URLRouter.handle($0) }
         }
@@ -26,13 +28,27 @@ struct OrcaFindApp: App {
                 .environment(state)
         }
 
-        MenuBarExtra("Orca Find", systemImage: "magnifyingglass.circle", isInserted: Binding(
+        MenuBarExtra(isInserted: Binding(
             get: { state.prefs.showMenuBar }, set: { state.prefs.showMenuBar = $0 })) {
             MenuBarView()
                 .environment(state)
+        } label: {
+            Image(nsImage: MenuBarGlyph.image)
+                .accessibilityLabel("Orca Find")
         }
         .menuBarExtraStyle(.window)
     }
+}
+
+/// The orca silhouette from the app icon as an 18pt template image (tools/icon/make_icon.py).
+enum MenuBarGlyph {
+    static let image: NSImage = {
+        let img = Bundle.main.image(forResource: "MenuBarIcon")
+            ?? NSImage(systemSymbolName: "magnifyingglass.circle", accessibilityDescription: "Orca Find")!
+        img.size = NSSize(width: 18, height: 18)
+        img.isTemplate = true
+        return img
+    }()
 }
 
 struct AppCommands: Commands {
@@ -54,6 +70,7 @@ struct AppCommands: Commands {
 
         CommandMenu("Find") {
             Button("Quick Search (\(state.prefs.quickSearchHotKey.display))") { QuickSearchController.shared.toggle() }
+            Button("Capture Part of the Screen (\(state.prefs.captureHotKey.display))") { CaptureController.shared.start() }
             Button("Search") { state.focusSearch() }
                 .keyboardShortcut("f")
             Button("Search by Voice") { state.focusSearch(); state.startVoiceSearch() }
@@ -96,6 +113,8 @@ struct AppCommands: Commands {
         CommandMenu("Go") {
             Button("Home") { state.navigate(.home) }
                 .keyboardShortcut("h", modifiers: [.command, .shift])
+            Button("Captures") { state.navigate(.captures) }
+                .keyboardShortcut("c", modifiers: [.command, .shift, .option])
             Button("Library") { state.navigate(.library) }
                 .keyboardShortcut("l", modifiers: [.command, .shift])
             Button("Recents") { state.navigate(.recents) }
@@ -142,6 +161,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.appearance = prefs.appearance.nsAppearance
             HotKeyCenter.shared.handler = { QuickSearchController.shared.toggle() }
             HotKeyCenter.shared.register(prefs.quickSearchHotKey)
+            HotKeyCenter.shared.setHandler(.capture) { CaptureController.shared.start() }
+            if prefs.capturesEnabled { HotKeyCenter.shared.register(prefs.captureHotKey, slot: .capture) }
             _ = AppState.shared
             FileIndex.shared.onReady.append {
                 TidyModel.shared.scan()

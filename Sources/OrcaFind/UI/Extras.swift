@@ -90,7 +90,7 @@ private struct MenuDownloadRow: View {
 
 struct SettingsView: View {
     @Environment(AppState.self) private var state
-    enum Pane: String, CaseIterable { case general = "General", library = "Library", voice = "Search & Voice", cleanup = "Clean Up", privacy = "Privacy" }
+    enum Pane: String, CaseIterable { case general = "General", captures = "Captures", library = "Library", voice = "Search & Voice", cleanup = "Clean Up", privacy = "Privacy" }
     @State private var pane: Pane = .general
 
     var body: some View {
@@ -119,6 +119,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     switch pane {
                     case .general: general
+                    case .captures: CapturesSettings()
                     case .library: library
                     case .voice: voice
                     case .cleanup: cleanup
@@ -136,6 +137,7 @@ struct SettingsView: View {
     private func icon(_ p: Pane) -> String {
         switch p {
         case .general: return "gearshape"
+        case .captures: return "viewfinder"
         case .library: return "folder"
         case .voice: return "mic"
         case .cleanup: return "sparkles"
@@ -316,6 +318,7 @@ struct SettingsView: View {
 
 struct ShortcutRecorder: View {
     @Binding var combo: HotKeyCombo
+    var defaultCombo: HotKeyCombo = .defaultQuickSearch
     @State private var recording = false
     @State private var monitor: Any?
 
@@ -323,7 +326,7 @@ struct ShortcutRecorder: View {
         HStack(spacing: 8) {
             Kbd(recording ? "Type a shortcut…" : combo.display)
             Button(recording ? "Cancel" : "Record new") { recording ? stop() : start() }.buttonStyle(.secondary)
-            if combo != .defaultQuickSearch && !recording { Button("Reset") { combo = .defaultQuickSearch }.buttonStyle(.plainP) }
+            if combo != defaultCombo && !recording { Button("Reset") { combo = defaultCombo }.buttonStyle(.plainP) }
         }
         .onDisappear { stop() }
     }

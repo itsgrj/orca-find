@@ -93,6 +93,13 @@ enum URLRouter {
             state.openMainWindow(); state.navigate(.cleanUp)
         case "downloaded-from", "downloads":
             state.openMainWindow(); state.navigate(.downloadedFrom(nil))
+        case "capture":
+            // orcafind://capture/<id> opens it (links from Apple Reminders); orcafind://capture alone starts one.
+            let id = url.pathComponents.dropFirst().first ?? ""
+            if id.isEmpty { CaptureController.shared.start() }
+            else { state.openMainWindow(); state.navigate(.capture(id)) }
+        case "captures":
+            state.openMainWindow(); state.navigate(.captures)
         case "latest-download":
             if let item = FileIndex.shared.latestDownload { FileActions.revealInFinder([item]) }
         default:

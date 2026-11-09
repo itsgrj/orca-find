@@ -71,6 +71,8 @@ struct MainView: View {
         case .cleanUp: TidyScreen()
         case .cleanUpReview(let k): ReviewScreen(kind: k)
         case .duplicates: DuplicatesScreen()
+        case .captures: CapturesScreen()
+        case .capture(let id): CaptureDetailScreen(id: id)
         default: BrowseScreen()
         }
     }
@@ -122,6 +124,10 @@ struct BrandAndTabs: View {
     private func go(_ tab: AppSection.Tab) {
         switch tab {
         case .home: state.navigate(.home)
+        case .captures:
+            // Clicking the tab again (or from a capture) goes back to the folders.
+            if state.section == .captures || state.section.tab == .captures { state.capturesFolder = nil; state.capturesTag = nil }
+            state.navigate(.captures)
         case .library: state.navigate(.library)
         case .downloads: state.navigate(.downloadedFrom(nil))
         case .tidy: state.navigate(.cleanUp)
@@ -137,7 +143,9 @@ struct TrailingBar: View {
     var body: some View {
         HStack(spacing: 10) {
             if state.player.current != nil { MiniPlayer() }
-            if state.section.tab != .home {
+            if state.section.tab == .captures {
+                CapturesSearchField()
+            } else if state.section.tab != .home {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(DS.onDark2)
                     // macOS ignores styling on a TextField prompt and paints it in the light-mode
@@ -409,5 +417,42 @@ struct SelectionBar: View {
     }
     private func barButton(_ icon: String, _ label: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { Label(label, systemImage: icon).font(DS.bodySM).padding(.horizontal, 8).padding(.vertical, 5) }.buttonStyle(.plain)
+    }
+}
+
+/// Top-bar search while on Captures: filters captures by what you said, the page and the text in the picture.
+struct CapturesSearchField: View {
+    @Environment(AppState.self) private var state
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        @Bindable var st = state
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(DS.onDark2)
+            TextField("", text: $st.capturesQuery)
+                .textFieldStyle(.plain).font(DS.body).foregroundStyle(.white)
+                .background(alignment: .leading) {
+                    if state.capturesQuery.isEmpty {
+                        Text("Search captures…").font(DS.body).foregroundStyle(DS.onDark2).allowsHitTesting(false)
+                    }
+                }
+                .focused($focused)
+                .frame(width: 210)
+                .onSubmit {
+                    if case .capture = state.section { state.navigate(.captures) }
+                }
+                .onChange(of: state.capturesQuery) { _, q in
+                    if !q.isEmpty, case .capture = state.section { state.navigate(.captures) }
+                }
+            if !state.capturesQuery.isEmpty {
+                Button { state.capturesQuery = "" } label: {
+                    Image(systemName: "xmark.circle.fill").font(.system(size: 11)).foregroundStyle(DS.onDark2)
+                }.buttonStyle(.plain)
+            }
+            Kbd("⌘K", dark: true)
+        }
+        .padding(.horizontal, 10).frame(height: 30)
+        .background(RoundedRectangle(cornerRadius: 8).fill(DS.topbarField))
+        .onChange(of: state.focusSearchToken) { _, _ in focused = true }
     }
 }
