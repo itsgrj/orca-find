@@ -8,7 +8,7 @@ struct MainView: View {
     var body: some View {
         @Bindable var st = state
         ZStack(alignment: .top) {
-            AppBackground(style: state.prefs.background, showArt: state.section == .home && state.searchText.isEmpty)
+            AppBackground(style: state.prefs.background)
             VStack(spacing: 0) {
                 if state.inlineChrome {
                     TopBar(inline: true).frame(height: 52).background(DS.topbar)
@@ -35,8 +35,13 @@ struct MainView: View {
         .animation(.spring(duration: 0.3), value: state.toast)
         .toolbar {
             if !state.inlineChrome {
-                ToolbarItem(placement: .navigation) { BrandAndTabs() }
-                ToolbarItem(placement: .primaryAction) { TrailingBar() }
+                // Brand, tabs and the search sit together on the left; a flexible spacer pushes
+                // the buttons to the top-right corner whatever the tab or search width.
+                ToolbarItem(placement: .navigation) {
+                    HStack(spacing: 18) { BrandAndTabs(); TopSearch() }
+                }
+                if #available(macOS 26.0, *) { ToolbarSpacer(.flexible) }
+                ToolbarItem(placement: .automatic) { TrailingBar() }
             }
         }
         .toolbarBackground(.hidden, for: .windowToolbar)
@@ -87,6 +92,7 @@ struct TopBar: View {
                 ForEach([0xFF5F57, 0xFEBC2E, 0x28C840], id: \.self) { c in Circle().fill(Color(hex: UInt32(c))).frame(width: 12, height: 12) }
             }
             BrandAndTabs()
+            TopSearch()
             Spacer()
             TrailingBar()
         }
@@ -99,8 +105,10 @@ struct BrandAndTabs: View {
     var body: some View {
         HStack(spacing: 18) {
             HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .semibold))
-                Text("orca find").font(DS.headingSM)
+                // The orca silhouette from the app icon (same glyph as the menu bar), in white.
+                Image(nsImage: MenuBarGlyph.image).resizable().renderingMode(.template).interpolation(.high)
+                    .scaledToFit().frame(width: 20, height: 20)
+                Text("OrcaFind").font(DS.headingSM)
             }
             .foregroundStyle(.white)
             .padding(.leading, 6)
@@ -135,44 +143,55 @@ struct BrandAndTabs: View {
     }
 }
 
-struct TrailingBar: View {
+/// Top-bar search, shown on every tab except Home (which has its own big search box).
+/// Fixed width so it sits in the same place whichever tab is open.
+struct TopSearch: View {
+    static let width: CGFloat = 300
     @Environment(AppState.self) private var state
     @State private var query = ""
     @FocusState private var focused: Bool
 
     var body: some View {
+        if state.section.tab == .captures {
+            CapturesSearchField()
+        } else if state.section.tab != .home {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(DS.onDark2)
+                // macOS ignores styling on a TextField prompt and paints it in the light-mode
+                // placeholder grey, which vanishes on the dark bar — so draw the placeholder ourselves.
+                TextField("", text: $query)
+                    .textFieldStyle(.plain).font(DS.body).foregroundStyle(.white)
+                    .background(alignment: .leading) {
+                        if query.isEmpty {
+                            Text("Search or ask…").font(DS.body).foregroundStyle(DS.onDark2)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .focused($focused)
+                    .frame(maxWidth: .infinity)
+                    .onChange(of: query) { _, q in
+                        guard !q.isEmpty else { return }
+                        state.beginSearch(q)
+                        query = ""
+                    }
+                Button { state.navigate(.home); state.startVoiceSearch() } label: {
+                    Image(systemName: "mic.fill").font(.system(size: 11)).foregroundStyle(DS.onDark)
+                }.buttonStyle(.plain).help("Search by voice (⌥⌘F)")
+                Kbd("⌘K", dark: true)
+            }
+            .padding(.horizontal, 10).frame(width: Self.width, height: 30)
+            .background(RoundedRectangle(cornerRadius: 8).fill(DS.topbarField))
+        }
+    }
+}
+
+/// Mini player (when music is playing), smart folders, light/dark and settings — pinned top-right.
+struct TrailingBar: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
         HStack(spacing: 10) {
             if state.player.current != nil { MiniPlayer() }
-            if state.section.tab == .captures {
-                CapturesSearchField()
-            } else if state.section.tab != .home {
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(DS.onDark2)
-                    // macOS ignores styling on a TextField prompt and paints it in the light-mode
-                    // placeholder grey, which vanishes on the dark bar — so draw the placeholder ourselves.
-                    TextField("", text: $query)
-                        .textFieldStyle(.plain).font(DS.body).foregroundStyle(.white)
-                        .background(alignment: .leading) {
-                            if query.isEmpty {
-                                Text("Search or ask…").font(DS.body).foregroundStyle(DS.onDark2)
-                                    .allowsHitTesting(false)
-                            }
-                        }
-                        .focused($focused)
-                        .frame(width: 210)
-                        .onChange(of: query) { _, q in
-                            guard !q.isEmpty else { return }
-                            state.beginSearch(q)
-                            query = ""
-                        }
-                    Button { state.navigate(.home); state.startVoiceSearch() } label: {
-                        Image(systemName: "mic.fill").font(.system(size: 11)).foregroundStyle(DS.onDark)
-                    }.buttonStyle(.plain).help("Search by voice (⌥⌘F)")
-                    Kbd("⌘K", dark: true)
-                }
-                .padding(.horizontal, 10).frame(height: 30)
-                .background(RoundedRectangle(cornerRadius: 8).fill(DS.topbarField))
-            }
             Menu {
                 if state.smartFolders.isEmpty { Text("No smart folders yet") }
                 ForEach(state.smartFolders) { f in
@@ -437,7 +456,7 @@ struct CapturesSearchField: View {
                     }
                 }
                 .focused($focused)
-                .frame(width: 210)
+                .frame(maxWidth: .infinity)
                 .onSubmit {
                     if case .capture = state.section { state.navigate(.captures) }
                 }
@@ -451,7 +470,7 @@ struct CapturesSearchField: View {
             }
             Kbd("⌘K", dark: true)
         }
-        .padding(.horizontal, 10).frame(height: 30)
+        .padding(.horizontal, 10).frame(width: TopSearch.width, height: 30)
         .background(RoundedRectangle(cornerRadius: 8).fill(DS.topbarField))
         .onChange(of: state.focusSearchToken) { _, _ in focused = true }
     }

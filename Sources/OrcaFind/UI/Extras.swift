@@ -174,7 +174,7 @@ struct SettingsView: View {
                                 ZStack {
                                     DS.app
                                     if let f = b.file, let img = Art.image(f) { Image(nsImage: img).resizable().scaledToFill() }
-                                    else { if let t = Art.image("dotgrid-tile@2x.png") { Image(nsImage: t).resizable(resizingMode: .tile) }; if let a = Art.image("orca-dither@2x.png") { Image(nsImage: a).resizable().scaledToFit() } }
+                                    else if let t = Art.image("dotgrid-tile@2x.png") { Image(nsImage: t).resizable(resizingMode: .tile) }
                                 }
                                 .frame(width: 96, height: 62).clipShape(RoundedRectangle(cornerRadius: 8))
                                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(p.background == b ? DS.brand : DS.border, lineWidth: p.background == b ? 2 : 1))
@@ -373,10 +373,7 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            AppBackground(style: .orca, showArt: false)
-            if let art = Art.image("orca-dither@2x.png") {
-                VStack { Spacer(); Image(nsImage: art).resizable().scaledToFit().opacity(0.8) }.ignoresSafeArea()
-            }
+            AppBackground(style: .dots)
             VStack(alignment: .leading, spacing: 18) {
                 Text("Welcome to Orca Find").font(DS.display).foregroundStyle(DS.text)
                 Text("Your files as big, clear cards — and a search that understands plain English, or your voice. First, let it see your folders.")

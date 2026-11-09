@@ -166,7 +166,7 @@ final class Preferences {
 
     init() {
         look = Look(rawValue: d.string(forKey: "look") ?? "") ?? .tide
-        background = BackgroundStyle(rawValue: d.string(forKey: "background") ?? "") ?? .orca
+        background = BackgroundStyle(rawValue: d.string(forKey: "background") ?? "") ?? .dots
         onboarded = d.bool(forKey: "onboarded")
         appearance = AppearanceMode(rawValue: d.string(forKey: "appearance") ?? "") ?? .system
         showMenuBar = d.object(forKey: "showMenuBar") as? Bool ?? true

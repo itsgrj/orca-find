@@ -303,11 +303,11 @@ struct ToastView: View {
 // MARK: - Backgrounds
 
 enum BackgroundStyle: String, CaseIterable, Identifiable {
-    case orca, aurora, liquid, halftone, tide
+    case dots, aurora, liquid, halftone, tide
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .orca: return "Orca dither"
+        case .dots: return "Dot grid"
         case .aurora: return "Pixel aurora"
         case .liquid: return "Liquid glass"
         case .halftone: return "Halftone"
@@ -316,7 +316,7 @@ enum BackgroundStyle: String, CaseIterable, Identifiable {
     }
     var file: String? {
         switch self {
-        case .orca: return nil
+        case .dots: return nil
         case .aurora: return "bg-aurora@2x.png"
         case .liquid: return "bg-liquid@2x.jpg"
         case .halftone: return "bg-halftone@2x.png"
@@ -339,11 +339,10 @@ enum Art {
     }
 }
 
-/// Window canvas: dot grid or the chosen background; Home adds the dithered orca.
+/// Window canvas: dot grid or the chosen background (Night sea in dark mode).
 struct AppBackground: View {
     @Environment(\.colorScheme) private var scheme
     let style: BackgroundStyle
-    var showArt: Bool
 
     var body: some View {
         GeometryReader { geo in
@@ -357,14 +356,6 @@ struct AppBackground: View {
                     Image(nsImage: img).resizable().scaledToFill().frame(width: geo.size.width, height: geo.size.height).clipped()
                 } else if let tile = Art.image("dotgrid-tile@2x.png") {
                     Image(nsImage: tile).resizable(resizingMode: .tile)
-                }
-                if showArt && (style == .orca || scheme == .dark),
-                   let art = Art.image(scheme == .dark ? "orca-night@2x.png" : "orca-dither@2x.png") {
-                    Image(nsImage: art).resizable().scaledToFit()
-                        .frame(width: max(1100, geo.size.width))
-                        .opacity(0.8)
-                        .offset(y: -34)
-                        .allowsHitTesting(false)
                 }
             }
         }
