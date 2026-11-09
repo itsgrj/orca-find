@@ -172,6 +172,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Load MobileCLIP in the background so the first description search is instant.
             if prefs.smartPictures { MobileCLIP.warmUp() }
             AutoCleanup.shared.start()
+            // Once: re-listen to older voice notes so ones that lost words get them back.
+            NoteTranscriber.startupPass()
             installKeyMonitor()
         }
     }

@@ -4,9 +4,15 @@ import PackageDescription
 let package = Package(
     name: "OrcaFind",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        // On-device English speech model runtime (Parakeet via Core ML). The model itself is an optional
+        // download from Settings; nothing is bundled.
+        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.18.3"),
+    ],
     targets: [
         .executableTarget(
             name: "OrcaFind",
+            dependencies: [.product(name: "FluidAudio", package: "FluidAudio")],
             path: "Sources/OrcaFind",
             linkerSettings: [
                 .linkedLibrary("sqlite3"),

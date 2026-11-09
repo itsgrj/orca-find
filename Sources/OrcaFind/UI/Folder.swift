@@ -168,6 +168,7 @@ struct GlassFolder: View {
         }
         .buttonStyle(.plain)
         .onHover { h in withAnimation(.spring(duration: 0.25)) { hovering = h } }
+        .handCursor()
     }
 
     @ViewBuilder private func contents(_ s: CGFloat) -> some View {

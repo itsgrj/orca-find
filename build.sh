@@ -24,6 +24,8 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp Resources/MenuBarIcon.png Resources/MenuBarIcon@2x.png "$APP/Contents/Resources/"
 cp -R Resources/Fonts Resources/Backgrounds "$APP/Contents/Resources/"
+# About › credits (licence credit for the optional speech model).
+cp Resources/Credits.rtf "$APP/Contents/Resources/"
 # MobileCLIP-S2 (~190 MB) for describing pictures; fetched + compiled once by tools/fetch_mobileclip.sh.
 [[ -d Resources/Models/mobileclip_s2_text.mlmodelc ]] || ./tools/fetch_mobileclip.sh
 cp -R Resources/Models "$APP/Contents/Resources/"

@@ -41,6 +41,9 @@ struct Capture: Identifiable, Hashable, Codable, Sendable {
     var tagOrigins: [String: String]?
     /// Length of the clip kept when what was grabbed was moving.
     var clipSeconds: Double?
+    /// Who last listened to the recording to write `note`: nil = live words only, "apple" = Apple's recognizer
+    /// over the whole recording, "model" = the downloaded English model. Never shown in the UI.
+    var noteSource: String?
 
     var tagList: [String] { tags ?? [] }
     var clipURL: URL { CaptureStore.folder.appendingPathComponent("\(id).mov") }

@@ -264,6 +264,7 @@ struct SettingsView: View {
             }
             line("Keep audio on this Mac (on-device only)", last: true) { Toggle("", isOn: $p.voiceOnDevice).toggleStyle(.switch).labelsHidden() }
         }
+        VoiceNotesSettings()
         HStack {
             Button("Read All Text Again") { Database.shared.resetText(); state.index.rescan() }.buttonStyle(.secondary)
             Button("Look at All Pictures Again") { Database.shared.resetVisual(); state.index.rescan() }.buttonStyle(.secondary)

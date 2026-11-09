@@ -9,6 +9,7 @@ import AVFoundation
 final class CaptureRecorder {
     var transcript = ""
     var isRecording = false
+    /// Loudest mic level (0…1, on a decibel scale) since the waveform last advanced.
     var level: Float = 0
     /// Recent levels for the little waveform in the strip.
     var levels: [Float] = Array(repeating: 0, count: 28)
@@ -58,6 +59,8 @@ final class CaptureRecorder {
         self.recognizer = recognizer
 
         let input = engine.inputNode
+        // Same clean-up FaceTime uses: less fan, keyboard and room noise, no echo from the speakers.
+        Self.setVoiceCleanup(Preferences.shared.cleanUpNoise, on: input)
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else {
             throw StartError.unavailable("No microphone found — type instead")
@@ -82,6 +85,7 @@ final class CaptureRecorder {
                 r.elapsed = Date().timeIntervalSince(r.started)
                 r.levels.removeFirst()
                 r.levels.append(r.level)
+                r.level = 0
             }
         }
         CaptureRecorder.current = self
@@ -89,6 +93,21 @@ final class CaptureRecorder {
     }
 
     static weak var current: CaptureRecorder?
+
+    /// macOS voice processing on the mic: noise suppression, echo cancellation and level control.
+    /// Other apps' sound is left alone (no ducking) so music or a video playing isn't turned down.
+    static func setVoiceCleanup(_ on: Bool, on input: AVAudioInputNode) {
+        guard input.isVoiceProcessingEnabled != on else { return }
+        do {
+            try input.setVoiceProcessingEnabled(on)
+            if on {
+                input.voiceProcessingOtherAudioDuckingConfiguration =
+                    AVAudioVoiceProcessingOtherAudioDuckingConfiguration(enableAdvancedDucking: false, duckingLevel: .min)
+            }
+        } catch {
+            NSLog("OrcaFind: voice clean-up \(on ? "on" : "off") failed: \(error)")
+        }
+    }
 
     /// A new recognition request on the same mic stream (at start, and again if macOS ends one after a long pause).
     private func startRecognition() {
@@ -107,12 +126,42 @@ final class CaptureRecorder {
     }
 
     nonisolated private static func makeTap(_ feed: RequestFeed, _ writer: AudioWriter) -> AVAudioNodeTapBlock {
-        return { buffer, _ in
+        return { raw, _ in
+            // With voice clean-up on, macOS hands over several channels; the cleaned voice is the first.
+            let buffer = CaptureRecorder.firstChannel(raw)
             feed.append(buffer)
             writer.write(buffer)
-            let level = VoiceSearch.rms(buffer)
-            DispatchQueue.main.async { CaptureRecorder.current?.level = level }
+            let level = CaptureRecorder.loudness(buffer)
+            // Several mic buffers arrive per waveform bar; keep the loudest so syllables aren't missed.
+            DispatchQueue.main.async { if let r = CaptureRecorder.current { r.level = max(r.level, level) } }
         }
+    }
+
+    /// The first channel of a multi-channel mic buffer as a mono buffer (the same buffer when already mono).
+    nonisolated static func firstChannel(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer {
+        let f = buffer.format
+        guard f.channelCount > 1, f.commonFormat == .pcmFormatFloat32, !f.isInterleaved,
+              let src = buffer.floatChannelData,
+              let monoFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: f.sampleRate, channels: 1, interleaved: false),
+              let mono = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: buffer.frameLength),
+              let dst = mono.floatChannelData else { return buffer }
+        mono.frameLength = buffer.frameLength
+        memcpy(dst[0], src[0], Int(buffer.frameLength) * MemoryLayout<Float>.size)
+        return mono
+    }
+
+    /// Mic loudness as 0…1 on a decibel scale, so a quiet voice draws short bars and a loud one tall bars.
+    /// (A plain linear RMS pins at full height for any normal speaking voice.)
+    nonisolated static func loudness(_ buffer: AVAudioPCMBuffer) -> Float {
+        guard let ch = buffer.floatChannelData?[0] else { return 0 }
+        let n = Int(buffer.frameLength)
+        guard n > 0 else { return 0 }
+        var sum: Float = 0
+        for i in 0..<n { sum += ch[i] * ch[i] }
+        let rms = sqrt(sum / Float(n))
+        guard rms > 0 else { return 0 }
+        let db = 20 * log10(rms)           // ≈ -60 room hum … -40 soft voice … -15 loud voice
+        return min(1, max(0, (db + 55) / 42))
     }
 
     nonisolated private static func makeResultHandler(_ owner: CaptureRecorder, _ gen: Int) -> (SFSpeechRecognitionResult?, Error?) -> Void {
@@ -225,18 +274,32 @@ final class AudioWriter: @unchecked Sendable {
     func open(url: URL, format: AVAudioFormat) {
         lock.lock(); defer { lock.unlock() }
         try? FileManager.default.removeItem(at: url)
+        // Voice: one channel at 96 kbps (AAC can't go above ~6 bits per sample per channel at low rates).
         let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: format.sampleRate,
-                                       AVNumberOfChannelsKey: min(2, Int(format.channelCount)), AVEncoderBitRateKey: 64_000]
+                                       AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: min(96_000, Int(format.sampleRate * 4))]
         file = try? AVAudioFile(forWriting: url, settings: settings, commonFormat: format.commonFormat, interleaved: format.isInterleaved)
     }
 
     func write(_ buffer: AVAudioPCMBuffer) {
         lock.lock(); defer { lock.unlock() }
-        try? file?.write(from: buffer)
+        guard let file else { return }
+        if buffer.format.channelCount == file.processingFormat.channelCount {
+            try? file.write(from: buffer)
+            return
+        }
+        // Mic arrays (and voice processing) can hand over several channels; the voice is in the first.
+        guard let src = buffer.floatChannelData,
+              let mono = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: buffer.frameLength),
+              let dst = mono.floatChannelData else { return }
+        mono.frameLength = buffer.frameLength
+        memcpy(dst[0], src[0], Int(buffer.frameLength) * MemoryLayout<Float>.size)
+        try? file.write(from: mono)
     }
 
     func close() {
         lock.lock(); defer { lock.unlock() }
+        // Finish the file now (writes its index) rather than whenever it's released.
+        if #available(macOS 15.0, *) { file?.close() }
         file = nil
     }
 }

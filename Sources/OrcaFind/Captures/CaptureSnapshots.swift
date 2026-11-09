@@ -82,7 +82,7 @@ extension Snapshot {
                 s.pageURL = "https://x.com/priyabuilds/status/1855012"
                 s.recorder.transcript = "Pricing thread for Friday’s newsletter. The forty percent bit is the hook. Remind me Thursday to write it up"
                 s.recorder.elapsed = 7
-                s.recorder.levels = (0..<28).map { i in i < 20 ? Float.random(in: 0.05...0.45) : 0 }
+                s.recorder.levels = (0..<28).map { i in i < 20 ? Float.random(in: 0.1...0.95) : 0 }
                 await shot(CaptureStripView(session: s).padding(20).background(Color(hex: 0xDADDE2)), "24-strip-recording", NSSize(width: 640, height: 178))
                 s.clip = ClipRecorder(); s.clipMoving = true
                 s.recorder.transcript = "Watch how the bars grow one after another. Want this for the SigmaFlow dashboard, tag it motion"
@@ -98,7 +98,9 @@ extension Snapshot {
                            "26-saved", NSSize(width: 420, height: 152))
             }
             await shot(NewCollectionPopover(existing: ["Newsletter", "Recipes"]) { _ in }, "28-new-collection", NSSize(width: 300, height: 230))
-            await shot(CapturesSettings().padding(24).background(DS.surface), "27-settings", NSSize(width: 660, height: 720))
+            await shot(CapturesSettings().padding(24).background(DS.surface), "27-settings", NSSize(width: 660, height: 1040))
+            await shot(VoiceNotesTip(preview: true).padding(24).background(DS.app), "32-voice-tip", NSSize(width: 1100, height: 120))
+            await shot(VoiceNotesTip(preview: true).padding(24).background(DS.app), "32b-voice-tip-dark", NSSize(width: 1100, height: 120), dark: true)
             print("capture snapshots written to \(outDir.path)")
             exit(0)
         }

@@ -264,8 +264,10 @@ struct HomeExtras: View {
             .background(Capsule().fill(DS.surface))
             .overlay(Capsule().strokeBorder(DS.border))
             .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .handCursor()
     }
 }
 

@@ -37,6 +37,7 @@ struct CapturesScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                VoiceNotesTip()
                 chips
                 if !query.isEmpty || state.capturesFolder != nil || state.capturesTag != nil {
                     if shown.isEmpty { empty } else { grid }
@@ -928,6 +929,8 @@ struct CapturesSettings: View {
             }
             Text("Press the shortcut in any app, drag over anything, then talk. Stop talking for 2 seconds and it’s saved. Tab types instead, ⌘V attaches a link, Esc throws it away. Say “for the newsletter” to file it, “tag it design” to tag it, or “remind me Thursday” to add it to Apple Reminders. If something in the box is moving, Orca keeps a clip of up to 30 seconds — V while talking switches between clip and picture. From a browser, Orca keeps the page link by itself; with Accessibility allowed it also keeps the exact pin or post you grabbed from a feed, and the moment a YouTube video was at.")
                 .font(DS.caption).foregroundStyle(DS.text2).fixedSize(horizontal: false, vertical: true)
+
+            VoiceNotesSettings()
 
             group("Use your captures in Claude") {
                 line("Claude Desktop") {

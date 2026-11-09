@@ -300,8 +300,24 @@ final class CaptureController {
 
         // 4 · Orca does the rest, in the background: page link (if still coming), text in the picture, reminder.
         let reminderTask = intent.reminderTask
+        // Listen to the whole recording again right away (well under a second), while the rest runs.
+        let relisten: Task<(text: String, source: NoteTranscriber.Source)?, Never>? =
+            c.audioSeconds > 0 && !c.noteTyped ? Task { @MainActor in await NoteTranscriber.listen(c.audioURL, live: note) } : nil
         Task { @MainActor in
             var c = c
+            var reminderTask = reminderTask
+            // Better words first, so the toast, title, tags and reminder all use what was really said.
+            if let relisten, let (text, source) = await relisten.value {
+                if NoteTranscriber.accept(text, over: c.note) {
+                    if let task = NoteTranscriber.apply(text, source, to: &c, reminders: true) { reminderTask = task.isEmpty ? nil : task }
+                    if s.pageTitle == nil && CaptureContext.cleanTitle(s.context.windowTitle) == nil {
+                        c.title = CaptureContext.title(page: nil, window: nil, note: text, ocr: "", app: c.sourceApp)
+                    }
+                } else {
+                    c.noteSource = source.rawValue
+                }
+                CaptureLibrary.shared.update(c)
+            }
             if let clip {
                 let seconds = await clip.stop()
                 if keepClip && seconds > 0.3 {
@@ -323,7 +339,7 @@ final class CaptureController {
             if fromBrowser { CaptureController.offerPageAccess() }
             let text = await Task.detached(priority: .utility) { TextExtractor.recognize(image) }.value
             c.ocr = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if s.pageTitle == nil && CaptureContext.cleanTitle(s.context.windowTitle) == nil && note.isEmpty {
+            if s.pageTitle == nil && CaptureContext.cleanTitle(s.context.windowTitle) == nil && c.note.isEmpty {
                 c.title = CaptureContext.title(page: nil, window: nil, note: "", ocr: c.ocr, app: c.sourceApp)
             }
             // One or two tags from the words and the picture, when Apple Intelligence is on this Mac.
@@ -334,26 +350,6 @@ final class CaptureController {
                 }
             }
             CaptureLibrary.shared.update(c)
-            // Safety net: transcribe the saved recording end to end; keep it if live recognition missed words.
-            var reminderTask = reminderTask
-            if c.audioSeconds > 0, !c.noteTyped {
-                let prefs = Preferences.shared
-                if let full = await CaptureRecorder.transcribeFile(c.audioURL, locale: prefs.voiceLocale, onDevice: prefs.voiceOnDevice),
-                   CaptureController.wordCount(full) > CaptureController.wordCount(c.note) {
-                    c.note = full
-                    let again = SpokenIntent.parse(full, existing: CaptureLibrary.shared.collections.map(\.name),
-                                                   existingTags: CaptureLibrary.shared.tagNames, now: c.created)
-                    if c.collection == nil { c.collection = again.collection; c.collectionPhrase = again.collectionPhrase }
-                    for t in again.tags { c.addTag(t, origin: "said") }
-                    if c.reminderDate == nil {
-                        c.reminderDate = again.reminderDate; c.reminderPhrase = again.reminderPhrase; reminderTask = again.reminderTask
-                    }
-                    if s.pageTitle == nil && CaptureContext.cleanTitle(s.context.windowTitle) == nil {
-                        c.title = CaptureContext.title(page: nil, window: nil, note: full, ocr: c.ocr, app: c.sourceApp)
-                    }
-                    CaptureLibrary.shared.update(c)
-                }
-            }
             if let due = c.reminderDate {
                 let title = reminderTask ?? (c.title.isEmpty ? "Look at your capture" : c.title)
                 var notes = c.note
@@ -388,16 +384,11 @@ final class CaptureController {
         guard var c = CaptureLibrary.shared.capture(id), c.hasAudio else { return }
         AppState.shared.showToast("Listening to the recording again…")
         Task { @MainActor in
-            let prefs = Preferences.shared
-            guard let full = await CaptureRecorder.transcribeFile(c.audioURL, locale: prefs.voiceLocale, onDevice: prefs.voiceOnDevice) else {
+            guard let (full, source) = await NoteTranscriber.listen(c.audioURL, live: c.note) else {
                 AppState.shared.showToast("Couldn’t transcribe the recording"); return
             }
-            c.note = full
             c.noteTyped = false
-            let again = SpokenIntent.parse(full, existing: CaptureLibrary.shared.collections.map(\.name),
-                                           existingTags: CaptureLibrary.shared.tagNames, now: c.created)
-            if c.collection == nil { c.collection = again.collection; c.collectionPhrase = again.collectionPhrase }
-            for t in again.tags { c.addTag(t, origin: "said") }
+            NoteTranscriber.apply(full, source, to: &c, reminders: false)
             CaptureLibrary.shared.update(c)
             AppState.shared.showToast("Updated what you said · \(wordCount(full)) words")
         }
@@ -440,6 +431,10 @@ final class CaptureController {
         p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         let host = NSHostingView(rootView: CaptureStripView(session: s) { [weak self] h in self?.resizeStrip(h) })
+        // We size the strip ourselves (resizeStrip). Left on, NSHostingView pins the panel's minimum
+        // height to the text laid out at zero width (one letter per line, ~650pt), so the strip
+        // balloons upward and covers the very thing being grabbed.
+        host.sizingOptions = []
         host.frame = NSRect(x: 0, y: 0, width: width, height: height)
         host.autoresizingMask = [.width, .height]
         p.contentView = host
@@ -447,16 +442,24 @@ final class CaptureController {
         p.makeKey()
         strip = p
 
-        // Purple outline around what was grabbed, so it's clear what's being talked about.
-        let o = NSPanel(contentRect: rect.insetBy(dx: -2, dy: -2), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        o.level = .statusBar
+        // Everything but the grab goes dark, with a purple edge around it, so it's clear what's being talked about.
+        // It sits just under the strip and lets clicks through; the picture was already taken, so it isn't in it.
+        let o = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        o.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue - 1)
         o.isOpaque = false
         o.backgroundColor = .clear
         o.ignoresMouseEvents = true
         o.hasShadow = false
         o.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        o.contentView = NSHostingView(rootView: RoundedRectangle(cornerRadius: 3).strokeBorder(Color(hex: 0x8B5CF6), lineWidth: 2))
+        let hole = rect.offsetBy(dx: -screen.frame.minX, dy: -screen.frame.minY)
+        o.contentView = GrabSpotlightView(frame: NSRect(origin: .zero, size: screen.frame.size), hole: hole)
+        o.alphaValue = 0
         o.orderFrontRegardless()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.2
+            o.animator().alphaValue = 1
+        }
+        p.orderFrontRegardless()
         outline = o
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
@@ -688,7 +691,7 @@ struct Waveform: View {
     var body: some View {
         HStack(alignment: .center, spacing: 2) {
             ForEach(levels.indices, id: \.self) { i in
-                let v = CGFloat(min(1, levels[i] * 2.2))
+                let v = CGFloat(min(1, max(0, levels[i])))
                 Capsule().fill(v < 0.04 ? Color.white.opacity(0.25) : color)
                     .frame(width: 2.5, height: max(2.5, v * 16))
             }
@@ -792,5 +795,25 @@ struct CaptureThumb: View {
             let id = id, px = maxPixel
             image = await Task.detached(priority: .userInitiated) { CaptureThumbs.image(id, maxPixel: px) }.value
         }
+    }
+}
+
+/// The dim around a grab while you talk: the screen darkens, the grabbed box stays clear with a purple edge.
+final class GrabSpotlightView: NSView {
+    let hole: NSRect
+    init(frame: NSRect, hole: NSRect) { self.hole = hole; super.init(frame: frame) }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let edge = hole.insetBy(dx: -2, dy: -2)
+        let dim = NSBezierPath(rect: bounds)
+        dim.append(NSBezierPath(roundedRect: edge, xRadius: 3, yRadius: 3))
+        dim.windingRule = .evenOdd
+        NSColor.black.withAlphaComponent(0.45).setFill()
+        dim.fill()
+        let border = NSBezierPath(roundedRect: edge.insetBy(dx: 1, dy: 1), xRadius: 3, yRadius: 3)
+        border.lineWidth = 2
+        NSColor(red: 0x8B / 255, green: 0x5C / 255, blue: 0xF6 / 255, alpha: 1).setStroke()
+        border.stroke()
     }
 }

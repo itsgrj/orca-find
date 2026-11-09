@@ -1,12 +1,81 @@
 import Foundation
 import CoreGraphics
 import AppKit
+import AVFoundation
 
 /// Developer hook: `OrcaFind --parse "pdfs from last week"` or `OrcaFind --search "screenshots with wifi"`.
 /// Prints how the query was understood (and what it finds), then exits without showing UI.
 enum DebugCLI {
+    /// Runs `work` on the main actor while the main run loop spins, then exits (for commands that touch @MainActor code).
+    private static func runOnMain(_ work: @escaping @MainActor () async -> Void) -> Never {
+        setvbuf(stdout, nil, _IOLBF, 0)
+        print("running…")
+        Task { @MainActor in
+            await work()
+            fflush(stdout)
+            exit(0)
+        }
+        while true { RunLoop.main.run(mode: .default, before: .distantFuture) }
+    }
+
     static func runIfRequested() {
         let args = CommandLine.arguments
+        // Voice notes: `--note-pass <file.m4a>…` (best re-listen + Apple-only), `--model-download`, `--voice-selftest <out.m4a>`.
+        if let i = args.firstIndex(of: "--note-pass") {
+            let files = args[(i + 1)...].filter { !$0.hasPrefix("-") }
+            runOnMain {
+                print("model ready:", SpeechModel.shared.isReady, "· english:", SpeechModel.languageIsEnglish)
+                for f in files {
+                    let url = URL(fileURLWithPath: f)
+                    let t0 = Date()
+                    let best = await NoteTranscriber.listen(url, live: "")
+                    let t1 = Date()
+                    let apple = await NoteTranscriber.apple(url, locale: Preferences.shared.voiceLocale, onDevice: true)
+                    print("== \(url.lastPathComponent)")
+                    print("best [\(best?.source.rawValue ?? "none")] \(Int(t1.timeIntervalSince(t0) * 1000)) ms: \(best?.text ?? "(nothing)")")
+                    print("apple \(Int(Date().timeIntervalSince(t1) * 1000)) ms: \(apple ?? "(nothing)")")
+                }
+            }
+        }
+        if args.contains("--model-download") {
+            runOnMain {
+                let m = SpeechModel.shared
+                print("installed:", SpeechModel.isInstalled, "at", SpeechModel.directory.path)
+                m.download()
+                var last = ""
+                while m.isBusy {
+                    if m.progressText != last { last = m.progressText; print(last) }
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                }
+                print("state:", m.state)
+            }
+        }
+        if let i = args.firstIndex(of: "--voice-selftest"), i + 1 < args.count {
+            let out = URL(fileURLWithPath: args[i + 1])
+            runOnMain {
+                let status = AVCaptureDevice.authorizationStatus(for: .audio)
+                print("mic permission: \(status.rawValue) (3 = allowed)")
+                guard status == .authorized else { print("skipping: microphone not allowed for this build"); return }
+                let engine = AVAudioEngine()
+                let input = engine.inputNode
+                print("before: \(input.outputFormat(forBus: 0))")
+                CaptureRecorder.setVoiceCleanup(true, on: input)
+                let format = input.outputFormat(forBus: 0)
+                print("voice processing: \(input.isVoiceProcessingEnabled) · format: \(format)")
+                let writer = AudioWriter()
+                writer.open(url: out, format: format)
+                final class Peak: @unchecked Sendable { var v: Float = 0; var buffers = 0 }
+                let peak = Peak()
+                input.installTap(onBus: 0, bufferSize: 1024, format: format) { b, _ in
+                    writer.write(CaptureRecorder.firstChannel(b)); peak.buffers += 1; peak.v = max(peak.v, VoiceSearch.rms(b))
+                }
+                do { try engine.start() } catch { print("engine didn't start: \(error)"); return }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                input.removeTap(onBus: 0); engine.stop(); writer.close()
+                let file = try? AVAudioFile(forReading: out)
+                print("buffers: \(peak.buffers) · peak level: \(peak.v) · saved: \(file.map { "\($0.fileFormat)" } ?? "unreadable") · \(file?.length ?? 0) frames")
+            }
+        }
         if let i = args.firstIndex(of: "--transcribe"), i + 1 < args.count {
             // Transcribe a saved capture recording end to end: `OrcaFind --transcribe <file.m4a>`
             let url = URL(fileURLWithPath: args[i + 1])

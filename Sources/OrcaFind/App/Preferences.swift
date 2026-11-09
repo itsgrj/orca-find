@@ -132,6 +132,8 @@ final class Preferences {
     var voiceEnabled: Bool { didSet { d.set(voiceEnabled, forKey: "voiceEnabled") } }
     var voiceLocale: String { didSet { d.set(voiceLocale, forKey: "voiceLocale") } }
     var voiceOnDevice: Bool { didSet { d.set(voiceOnDevice, forKey: "voiceOnDevice") } }
+    /// Take fan, keyboard and room noise out of capture recordings (macOS voice processing).
+    var cleanUpNoise: Bool { didSet { d.set(cleanUpNoise, forKey: "cleanUpNoise") } }
     var voiceAutoSearch: Bool { didSet { d.set(voiceAutoSearch, forKey: "voiceAutoSearch") } }
 
     // Clean Up thresholds
@@ -194,6 +196,7 @@ final class Preferences {
         voiceEnabled = d.object(forKey: "voiceEnabled") as? Bool ?? true
         voiceLocale = d.string(forKey: "voiceLocale") ?? Locale.current.identifier
         voiceOnDevice = d.object(forKey: "voiceOnDevice") as? Bool ?? true
+        cleanUpNoise = d.object(forKey: "cleanUpNoise") as? Bool ?? true
         voiceAutoSearch = d.object(forKey: "voiceAutoSearch") as? Bool ?? true
         forgottenDays = d.object(forKey: "forgottenDays") as? Int ?? 30
         installerDays = d.object(forKey: "installerDays") as? Int ?? 7
