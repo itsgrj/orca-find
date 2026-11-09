@@ -66,7 +66,8 @@ enum PageInspector {
 
     /// The page (AXWebArea) in the front window that overlaps the box most — not DevTools or a side panel.
     private static func webArea(in app: AXUIElement, box: CGRect) -> AXUIElement? {
-        guard let window = element(app, kAXFocusedWindowAttribute) ?? element(app, kAXMainWindowAttribute) else { return nil }
+        let windows = (value(app, kAXWindowsAttribute) as? [AXUIElement]) ?? []
+        guard let window = element(app, kAXFocusedWindowAttribute) ?? element(app, kAXMainWindowAttribute) ?? windows.first else { return nil }
         var queue = [window], seen = 0
         var best: (AXUIElement, CGFloat)?
         while !queue.isEmpty, seen < 800 {
