@@ -8,31 +8,45 @@ struct HomeScreen: View {
     var body: some View {
         let q = hasQuery
         VStack(spacing: 0) {
-            VStack(spacing: 8) {
-                Text("What are you looking for?").font(DS.display).foregroundStyle(DS.text)
-                Text("Type it or just say it. Orca reads file names, the text inside files and screenshots, where each download came from — and what you said about your captures.")
-                    .font(DS.body).foregroundStyle(DS.text2).multilineTextAlignment(.center)
+            // The hero line leaves quickly and drifts up; the card slides into its place.
+            // (Removed views fade at their last frame while siblings animate — no height-0 clipping.)
+            if !q {
+                VStack(spacing: 8) {
+                    Text("What are you looking for?").font(DS.display).foregroundStyle(DS.text)
+                    Text("Type it or just say it. Orca reads file names, the text inside files and screenshots, where each download came from — and what you said about your captures.")
+                        .font(DS.body).foregroundStyle(DS.text2).multilineTextAlignment(.center)
+                }
+                .padding(.top, 50)
+                .padding(.bottom, 22)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .offset(y: -6)).animation(.easeOut(duration: 0.2).delay(0.2)),
+                    removal: .opacity.animation(.easeOut(duration: 0.06))))
             }
-            .frame(height: q ? 0 : nil)
-            .opacity(q ? 0 : 1)
-            .clipped()
-            .padding(.top, q ? 0 : 50)
-            .padding(.bottom, q ? 0 : 22)
 
             SearchCard(compact: q)
                 .frame(maxWidth: q ? .infinity : 760)
                 .padding(.horizontal, q ? 24 : 32)
                 .padding(.top, q ? 16 : 0)
 
+            // Outgoing content clears out fast; incoming content arrives just after,
+            // so the two heavy layers never crossfade on top of each other.
             if q {
                 SearchResults()
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .offset(y: 10)).animation(.easeOut(duration: 0.22).delay(0.1)),
+                        removal: .opacity.animation(.easeOut(duration: 0.1))))
             } else {
                 GeometryReader { geo in
                     ScrollView { PrivateAIReminder().padding(.horizontal, 32).padding(.top, 22); HomeExtras(width: geo.size.width - 64).padding(.horizontal, 32).padding(.top, 22).padding(.bottom, 30) }
                 }
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .offset(y: 10)).animation(.easeOut(duration: 0.24).delay(0.1)),
+                    removal: .opacity.animation(.easeOut(duration: 0.1))))
             }
         }
-        .animation(.easeOut(duration: 0.2), value: q)
+        // Critically-damped spring: smooth ease-out for the card's move + widen, and
+        // interruptible if you clear the field mid-flight.
+        .animation(.smooth(duration: 0.34), value: q)
     }
 }
 
@@ -45,6 +59,13 @@ struct SearchCard: View {
     @State private var exampleIndex = 0
     @State private var editingChip: String?
 
+    /// Content that swaps when the card changes shape. Removed views fade where they *were* and
+    /// inserted views appear where they *will be* — neither follows the card — so: leave almost
+    /// instantly, and arrive only once the card has nearly settled (spring is 0.34 s).
+    static let swap = AnyTransition.asymmetric(
+        insertion: .opacity.animation(.easeOut(duration: 0.16).delay(0.2)),
+        removal: .opacity.animation(.easeOut(duration: 0.06)))
+
     private let examples = ["the PDF with the blue cover", "screenshots with wifi password", "that photo of a dog at the beach",
                             "pdfs from last week over 5 mb", "photos of receipts from last month", "invoices from gmail"]
 
@@ -53,7 +74,9 @@ struct SearchCard: View {
         let listening = state.voice.isListening && state.voice.owner == "main"
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
-                Image(systemName: "magnifyingglass").font(.system(size: compact ? 16 : 19, weight: .medium)).foregroundStyle(DS.text2)
+                // Font size snaps between values; scale instead so the glyph shrinks smoothly with the card.
+                Image(systemName: "magnifyingglass").font(.system(size: 19, weight: .medium)).foregroundStyle(DS.text2)
+                    .scaleEffect(compact ? 16.0 / 19.0 : 1)
                 TextField("", text: $st.searchText, prompt: Text("Try “\(examples[exampleIndex])”").foregroundStyle(DS.text3))
                     .textFieldStyle(.plain)
                     .font(DS.searchLG)
@@ -66,7 +89,7 @@ struct SearchCard: View {
                     Button { state.searchText = ""; focused = true } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(DS.text3) }
                         .buttonStyle(.plain).help("Clear")
                 }
-                if !compact { Kbd("⇧⌘Space") }
+                if !compact { Kbd("⇧⌘Space").transition(Self.swap) }
                 if state.prefs.voiceEnabled {
                     MicButton(active: listening, size: compact ? 34 : 40) { state.startVoiceSearch() }
                 }
@@ -115,7 +138,9 @@ struct SearchCard: View {
                         }
                 }
                 .padding(.horizontal, 18).padding(.bottom, 12)
+                .transition(Self.swap)
             } else if !listening {
+                VStack(alignment: .leading, spacing: 0) {
                 Rectangle().fill(DS.border).frame(height: 1)
                 VStack(alignment: .leading, spacing: 10) {
                     PixelLabel("Try asking")
@@ -127,8 +152,12 @@ struct SearchCard: View {
                     }
                 }
                 .padding(.horizontal, 18).padding(.vertical, 14)
+                }
+                .transition(Self.swap)
             }
         }
+        // Keep everything that belongs to the card inside the card while it moves and resizes.
+        .clipShape(RoundedRectangle(cornerRadius: compact ? 16 : 20, style: .continuous))
         .background(RoundedRectangle(cornerRadius: compact ? 16 : 20, style: .continuous).fill(DS.surface))
         .overlay(RoundedRectangle(cornerRadius: compact ? 16 : 20, style: .continuous).strokeBorder(focused ? DS.focus.opacity(0.7) : DS.border, lineWidth: focused ? 1.5 : 1))
         .shadow(color: .black.opacity(compact ? 0.05 : 0.12), radius: compact ? 2 : 24, y: compact ? 1 : 12)
@@ -273,6 +302,21 @@ struct HomeExtras: View {
 
 // MARK: - Results
 
+/// "Searching…" that stays invisible for the first 300 ms, so quick searches go
+/// straight from the transition to results with no intermediate text flashing past.
+private struct SearchingLabel: View {
+    @State private var visible = false
+    var body: some View {
+        Text("Searching…").font(DS.headingMD).foregroundStyle(DS.text)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .opacity(visible ? 1 : 0)
+            .task {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                withAnimation(.easeOut(duration: 0.2)) { visible = true }
+            }
+    }
+}
+
 struct SearchResults: View {
     @Environment(AppState.self) private var state
     @Environment(CaptureLibrary.self) private var library
@@ -290,7 +334,10 @@ struct SearchResults: View {
                         if !captureHits.isEmpty {
                             CaptureSearchSection(hits: captureHits, terms: state.parsed.terms, width: geo.size.width)
                         }
-                        if !(items.isEmpty && !captureHits.isEmpty && !state.isRefreshing) {
+                        if items.isEmpty && state.isRefreshing {
+                            // Quiet placeholder: only says "Searching…" if it's actually slow.
+                            SearchingLabel()
+                        } else if !(items.isEmpty && !captureHits.isEmpty && !state.isRefreshing) {
                         HStack(alignment: .firstTextBaseline) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(state.isRefreshing && items.isEmpty ? "Searching…"
@@ -317,12 +364,14 @@ struct SearchResults: View {
                                 .frame(maxWidth: .infinity).padding(.top, 30)
                         } else {
                             CardGrid(items: items, width: geo.size.width, target: CGFloat(state.prefs.cardSize) + 30, snippets: snippets)
+                                .transition(.opacity)
                         }
                         } else {
                             Text("No files match — only what you saved.").font(DS.bodySM).foregroundStyle(DS.text2)
                         }
                     }
                     .padding(.top, 16).padding(.bottom, 30)
+                    .animation(.easeOut(duration: 0.18), value: items.isEmpty)
                 }
                 .onChange(of: state.scrollTarget) { _, t in if let t { withAnimation { proxy.scrollTo(t) }; state.scrollTarget = nil } }
             }

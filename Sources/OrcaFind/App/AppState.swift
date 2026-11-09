@@ -309,6 +309,9 @@ final class AppState {
             setSection(.search)
             sort = SortSpec(field: .relevance, ascending: false)
         }
+        // Mark as searching now, not after the 140 ms debounce — otherwise the first frames
+        // of the Home → results transition flash "Nothing matches" before results arrive.
+        isRefreshing = true
         scheduleRefresh()
     }
 
@@ -463,7 +466,7 @@ final class AppState {
         let section = self.section
         switch section {
         case .home, .duplicates, .cleanUp:
-            visibleItems = []; visibleSize = 0; return
+            visibleItems = []; visibleSize = 0; isRefreshing = false; return
         case .cleanUpReview(let kind):
             setVisible((tidy.results[kind] ?? []).map(\.item)); return
         default: break
