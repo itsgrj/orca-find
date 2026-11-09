@@ -10,7 +10,7 @@ struct HomeScreen: View {
         VStack(spacing: 0) {
             VStack(spacing: 8) {
                 Text("What are you looking for?").font(DS.display).foregroundStyle(DS.text)
-                Text("Type it or just say it. Orca reads file names, the text inside files and screenshots, and where each download came from.")
+                Text("Type it or just say it. Orca reads file names, the text inside files and screenshots, where each download came from — and what you said about your captures.")
                     .font(DS.body).foregroundStyle(DS.text2).multilineTextAlignment(.center)
             }
             .frame(height: q ? 0 : nil)
@@ -273,7 +273,10 @@ struct HomeExtras: View {
 
 struct SearchResults: View {
     @Environment(AppState.self) private var state
+    @Environment(CaptureLibrary.self) private var library
     @State private var snippets: [String: String] = [:]
+    /// V7: captures that match, shown above the files.
+    @State private var captureHits: [Capture] = []
 
     var body: some View {
         let items = state.visibleItems
@@ -282,6 +285,10 @@ struct SearchResults: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        if !captureHits.isEmpty {
+                            CaptureSearchSection(hits: captureHits, terms: state.parsed.terms, width: geo.size.width)
+                        }
+                        if !(items.isEmpty && !captureHits.isEmpty && !state.isRefreshing) {
                         HStack(alignment: .firstTextBaseline) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(state.isRefreshing && items.isEmpty ? "Searching…"
@@ -309,6 +316,9 @@ struct SearchResults: View {
                         } else {
                             CardGrid(items: items, width: geo.size.width, target: CGFloat(state.prefs.cardSize) + 30, snippets: snippets)
                         }
+                        } else {
+                            Text("No files match — only what you saved.").font(DS.bodySM).foregroundStyle(DS.text2)
+                        }
                     }
                     .padding(.top, 16).padding(.bottom, 30)
                 }
@@ -324,6 +334,10 @@ struct SearchResults: View {
         }
         .padding(.horizontal, 24)
         .task(id: items.prefix(80).map(\.id).joined() + state.parsed.terms.joined() + state.parsed.looks.map(\.word).joined() + state.parsed.coverColours.joined()) { await loadSnippets(items) }
+        .task(id: "\(state.parsed.raw)|\(state.parsed.terms)|\(library.version)") {
+            let q = state.parsed
+            captureHits = await Task.detached(priority: .userInitiated) { CaptureSearch.find(q) }.value
+        }
         .overlay(alignment: .bottom) { SelectionBar() }
     }
 

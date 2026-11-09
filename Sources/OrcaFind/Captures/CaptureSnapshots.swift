@@ -60,6 +60,13 @@ extension Snapshot {
                     await shot(MainView(), title.hasPrefix("Miso") ? "21c-detail-feed-item" : "21d-detail-video-moment", size)
                 }
             }
+            state.navigate(.home)
+            state.searchText = "that pricing thread I saved for the newsletter"
+            await shot(MainView(), "30-search-captures", size)
+            state.searchText = "#design"
+            await shot(MainView(), "31-search-tag", size)
+            state.searchText = ""
+            state.navigate(.captures)
             await shot(AddTagPopover(existing: CaptureLibrary.shared.tagNames, have: ["pricing"]) { _ in }, "29-add-tag", NSSize(width: 300, height: 270))
             if let first = CaptureLibrary.shared.items.first {
                 state.navigate(.capture(first.id))
