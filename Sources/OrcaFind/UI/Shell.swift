@@ -4,6 +4,7 @@ import AppKit
 struct MainView: View {
     @Environment(AppState.self) private var state
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         @Bindable var st = state
@@ -27,12 +28,25 @@ struct MainView: View {
         }
         .overlay(alignment: .bottom) {
             if let toast = state.toast {
-                ToastView(toast: toast) { state.toast = nil }
+                ToastView(toast: toast, dismiss: { state.toast = nil }, seeRemoved: { state.navigate(.recentlyRemoved) })
                     .padding(.bottom, 26)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+                // ⌘Z while the toast is up (the preview has its own ⌘Z for edits).
+                if let undo = toast.undo, state.previewItem == nil {
+                    Button("") {
+                        // While typing, ⌘Z undoes the typing, not the Trash.
+                        if let text = NSApp.keyWindow?.firstResponder as? NSTextView, text.isEditable {
+                            text.undoManager?.undo()
+                        } else {
+                            undo(); state.toast = nil
+                        }
+                    }
+                        .keyboardShortcut("z", modifiers: .command).opacity(0).frame(width: 0, height: 0)
+                }
             }
         }
         .animation(.spring(duration: 0.3), value: state.toast)
+        .modifier(UpdateOverlays())
         .toolbar {
             if !state.inlineChrome {
                 // Brand, tabs and the search sit together on the left; a flexible spacer pushes
@@ -63,7 +77,7 @@ struct MainView: View {
                 window.backgroundColor = NSColor(hex: 0x1A1A1A)
             }
         })
-        .onAppear { state.openWindowAction = openWindow }
+        .onAppear { state.openWindowAction = openWindow; state.openSettingsAction = openSettings }
         .navigationTitle("")
     }
 
@@ -76,6 +90,7 @@ struct MainView: View {
         case .cleanUp: TidyScreen()
         case .cleanUpReview(let k): ReviewScreen(kind: k)
         case .duplicates: DuplicatesScreen()
+        case .recentlyRemoved: RecentlyRemovedScreen()
         case .captures: CapturesScreen()
         case .capture(let id): CaptureDetailScreen(id: id)
         default: BrowseScreen()
@@ -154,7 +169,7 @@ struct TopSearch: View {
     var body: some View {
         if state.section.tab == .captures {
             CapturesSearchField()
-        } else if state.section.tab != .home {
+        } else if state.section.tab != .home || state.homeSearchScrolledAway {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(DS.onDark2)
                 // macOS ignores styling on a TextField prompt and paints it in the light-mode
@@ -181,6 +196,7 @@ struct TopSearch: View {
             }
             .padding(.horizontal, 10).frame(width: Self.width, height: 30)
             .background(RoundedRectangle(cornerRadius: 8).fill(DS.topbarField))
+            .transition(.opacity)   // fades in on Home once the big card has scrolled away
         }
     }
 }
@@ -191,6 +207,7 @@ struct TrailingBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            UpdatePill()
             PrivateAIPill()
             if state.player.current != nil { MiniPlayer() }
             Menu {

@@ -30,6 +30,15 @@ enum FileScanner {
         let url: URL
         let name: String
         let maxDepth: Int
+        /// Found by search, never offered for tidying: the person's own folders in their home folder.
+        var searchOnly = false
+        /// Watched for live changes. Off for the home folder itself (its hidden Library changes all the time).
+        var watched = true
+
+        /// The file or folder at `path` belongs to this root (see FileScanner.root(for:in:) when roots nest).
+        func covers(_ path: String) -> Bool {
+            maxDepth <= 1 ? (path as NSString).deletingLastPathComponent == url.path : path.hasPrefix(url.path + "/")
+        }
     }
 
     static let resourceKeys: [URLResourceKey] = [
@@ -49,6 +58,40 @@ enum FileScanner {
 
     static func defaultFolderNames() -> [String] { ["Desktop", "Documents", "Downloads", "Pictures", "Movies", "Music"] }
 
+    /// The most specific root holding `path` (an added folder can sit inside a home folder).
+    static func root(for path: String, in roots: [Root]) -> Root? {
+        roots.filter { $0.covers(path) }.max { $0.url.path.count < $1.url.path.count }
+    }
+
+    /// Settings switch (in disabledDefaultFolders) for "everything else in your home folder".
+    static let homeSettingName = "Home"
+
+    /// Never searched in the home folder: where macOS and apps keep their own data, the Applications
+    /// folder (a root of its own), and tool kits developers install there (tens of thousands of files each).
+    static let skippedHomeFolders: Set<String> = [
+        "Library", "Applications", "anaconda3", "miniconda3", "miniforge3", "mambaforge", "opt", "go", "flutter",
+        "OrbStack", "VirtualBox VMs", "Parallels"
+    ]
+
+    /// Loose files in the home folder itself, plus one root per folder kept there next to Desktop and
+    /// Documents ("SigmaFlow", "Claude"…). None of these need a permission prompt.
+    static func homeRoots(home: URL, skipping taken: Set<String>) -> [Root] {
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isPackageKey, .isSymbolicLinkKey, .isVolumeKey]
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: home, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else { return [] }
+        var out = [Root(url: home, name: homeSettingName, maxDepth: 1, searchOnly: true, watched: false)]
+        for url in urls.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let name = url.lastPathComponent
+            guard !taken.contains(name), !skippedHomeFolders.contains(name), !skippedDirectories.contains(name),
+                  let v = try? url.resourceValues(forKeys: Set(keys)),
+                  v.isDirectory == true, v.isPackage != true, v.isSymbolicLink != true,
+                  v.isVolume != true   // a mounted drive or cloud disk shown in the home folder
+            else { continue }
+            out.append(Root(url: url, name: name, maxDepth: 14, searchOnly: true))
+        }
+        return out
+    }
+
     static func roots(extraFolders: [String], disabledDefaults: Set<String>) -> [Root] {
         let home = URL(fileURLWithPath: NSHomeDirectory())
         var roots: [Root] = defaultFolderNames()
@@ -63,6 +106,14 @@ enum FileScanner {
             let url = URL(fileURLWithPath: path)
             if !roots.contains(where: { path.hasPrefix($0.url.path + "/") || $0.url.path == path }) {
                 roots.append(Root(url: url, name: url.lastPathComponent, maxDepth: 14))
+            }
+        }
+        // After the added folders, so a folder someone added by hand keeps its clean-up suggestions.
+        if !disabledDefaults.contains(homeSettingName) {
+            let earlier = roots   // not the home roots themselves: every own folder sits "inside" the home root
+            for r in homeRoots(home: home, skipping: Set(defaultFolderNames()))
+            where !earlier.contains(where: { r.url.path == $0.url.path || r.url.path.hasPrefix($0.url.path + "/") }) {
+                roots.append(r)
             }
         }
         return roots
@@ -118,13 +169,18 @@ enum FileScanner {
         for case let url as URL in en {
             if en.level > root.maxDepth { en.skipDescendants(); continue }
             guard let basic = try? url.resourceValues(forKeys: walkSet) else { continue }
-            if basic.isHidden == true || basic.isSymbolicLink == true { continue }
+            if basic.isHidden == true || basic.isSymbolicLink == true {
+                if basic.isDirectory == true { en.skipDescendants() }
+                continue
+            }
             let ext = url.pathExtension.lowercased()
             if basic.isDirectory == true {
                 if basic.isPackage == true {
                     if protectedPackageExts.contains(ext) || !keptPackageExts.contains(ext) { continue }
                 } else {
-                    if skippedDirectories.contains(basic.name ?? url.lastPathComponent) { en.skipDescendants() }
+                    // Never open a folder whose contents would be past the depth limit (the home folder's
+                    // own root lists only its loose files, so Desktop, Library… are never opened here).
+                    if skippedDirectories.contains(basic.name ?? url.lastPathComponent) || en.level >= root.maxDepth { en.skipDescendants() }
                     continue
                 }
             }

@@ -2,10 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ATSApplicationFontsPath</key>
+	<string>Fonts</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Orca Find</string>
+	<string>OrcaFind</string>
 	<key>CFBundleExecutable</key>
 	<string>OrcaFind</string>
 	<key>CFBundleIconFile</key>
@@ -15,25 +17,11 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Orca Find</string>
+	<string>OrcaFind</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.0</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.productivity</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
-	<key>NSSupportsAutomaticTermination</key>
-	<false/>
-	<key>ATSApplicationFontsPath</key>
-	<string>Fonts</string>
+	<string>1.1.0</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -45,21 +33,64 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Orca asks your browser for the page you’re looking at, so each capture keeps its link.</string>
 	<key>NSDesktopFolderUsageDescription</key>
-	<string>Orca Find shows and searches the files on your Desktop. Nothing leaves your Mac.</string>
+	<string>OrcaFind shows and searches the files on your Desktop. Nothing leaves your Mac.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
-	<string>Orca Find shows and searches the files in Documents. Nothing leaves your Mac.</string>
+	<string>OrcaFind shows and searches the files in Documents. Nothing leaves your Mac.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
-	<string>Orca Find shows and searches your Downloads, and tells you where each one came from. Nothing leaves your Mac.</string>
+	<string>OrcaFind shows and searches your Downloads, and tells you where each one came from. Nothing leaves your Mac.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Orca listens only while you search by voice or right after you grab something, so you can say why you saved it.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>When you say “remind me…” while capturing, Orca adds it to Apple Reminders with a link back to the capture.</string>
 	<key>NSRemindersUsageDescription</key>
 	<string>When you say “remind me…” while capturing, Orca adds it to Apple Reminders with a link back to the capture.</string>
-	<key>NSAppleEventsUsageDescription</key>
-	<string>Orca asks your browser for the page you’re looking at, so each capture keeps its link.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Orca Find turns your spoken search into text, on your Mac whenever possible.</string>
+	<string>OrcaFind turns your spoken search into text, on your Mac whenever possible.</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/itsgrj/orca-find/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>IEz4Yaqhw8mj3YRNxrS5scNxc+CukXz9e7l5pxnwkpM=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Capture with Orca</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>captureText</string>
+			<key>NSPortName</key>
+			<string>OrcaFind</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendTypes</key>
+			<array>
+				<string>public.utf8-plain-text</string>
+				<string>NSStringPboardType</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

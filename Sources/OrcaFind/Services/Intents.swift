@@ -1,9 +1,9 @@
 import AppIntents
 import AppKit
 
-// Shortcuts & Siri actions. Note: these register with the system only when the app is built
-// with Xcode (which generates the App Intents metadata). The orcafind:// URL scheme below works
-// everywhere, including from Shortcuts' "Open URL" action.
+// Shortcuts & Siri actions. They register with the system through the App Intents metadata that
+// build.sh generates (appintentsmetadataprocessor). The orcafind:// URL scheme below works
+// everywhere too, including from Shortcuts' "Open URL" action.
 
 @MainActor
 private func waitForIndex() async {
@@ -46,8 +46,8 @@ struct GetLatestDownloadIntent: AppIntent {
 }
 
 struct SearchInOrcaFindIntent: AppIntent {
-    static var title: LocalizedStringResource = "Search in Orca Find"
-    static var description = IntentDescription("Opens Orca Find with your search filled in.")
+    static var title: LocalizedStringResource = "Search in OrcaFind"
+    static var description = IntentDescription("Opens OrcaFind with your search filled in.")
     static var openAppWhenRun: Bool = true
 
     @Parameter(title: "Search")
@@ -61,12 +61,59 @@ struct SearchInOrcaFindIntent: AppIntent {
     }
 }
 
+struct StartCaptureIntent: AppIntent {
+    static var title: LocalizedStringResource = "Start a Capture"
+    static var description = IntentDescription("Drag over part of the screen, say why you’re keeping it, and find it later in OrcaFind.")
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        // Let Shortcuts' own window get out of the way first.
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        CaptureController.shared.start()
+        return .result()
+    }
+}
+
+struct SaveToCapturesIntent: AppIntent {
+    static var title: LocalizedStringResource = "Save to Captures"
+    static var description = IntentDescription("Saves a file, a link or some text to your Captures. OrcaFind listens for a note, as with any capture.")
+
+    @Parameter(title: "File")
+    var file: IntentFile?
+
+    @Parameter(title: "Link")
+    var link: URL?
+
+    @Parameter(title: "Text")
+    var text: String?
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        let item: SharedItem
+        if let url = file?.fileURL {
+            item = SharedItem(kind: .file, title: url.lastPathComponent, path: url.path)
+        } else if let link {
+            item = link.isFileURL ? SharedItem(kind: .file, title: link.lastPathComponent, path: link.path) : SharedItem(kind: .page, url: link.absoluteString)
+        } else if let text, !text.isEmpty {
+            item = SharedItem(kind: .text, text: text)
+        } else {
+            throw $text.needsValueError("What should OrcaFind save?")
+        }
+        CaptureController.shared.startShared(item)
+        return .result()
+    }
+}
+
 struct OrcaFindShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: SearchInOrcaFindIntent(), phrases: ["Search in \(.applicationName)", "Find files with \(.applicationName)"],
                     shortTitle: "Search Files", systemImageName: "magnifyingglass")
         AppShortcut(intent: GetLatestDownloadIntent(), phrases: ["Get my latest download from \(.applicationName)"],
                     shortTitle: "Latest Download", systemImageName: "arrow.down.circle")
+        AppShortcut(intent: StartCaptureIntent(), phrases: ["Start a capture with \(.applicationName)", "Capture with \(.applicationName)"],
+                    shortTitle: "Start a Capture", systemImageName: "camera.viewfinder")
+        AppShortcut(intent: SaveToCapturesIntent(), phrases: ["Save to \(.applicationName) Captures"],
+                    shortTitle: "Save to Captures", systemImageName: "tray.and.arrow.down")
     }
 }
 
@@ -98,6 +145,9 @@ enum URLRouter {
             let id = url.pathComponents.dropFirst().first ?? ""
             if id.isEmpty { CaptureController.shared.start() }
             else { state.openMainWindow(); state.navigate(.capture(id)) }
+        case "share":
+            // From Share › Orca in another app (Extensions/OrcaShare).
+            if let item = SharedItem(link: url) { CaptureController.shared.startShared(item) }
         case "captures":
             state.openMainWindow(); state.navigate(.captures)
         case "latest-download":

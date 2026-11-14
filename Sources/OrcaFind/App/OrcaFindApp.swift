@@ -10,13 +10,15 @@ struct OrcaFindApp: App {
         MCPServer.runIfRequested()
         DebugCLI.runIfRequested()
         EditDebug.runIfRequested()
+        UpdateDebug.runIfRequested()
     }
 
     var body: some Scene {
-        Window("Orca Find", id: "main") {
+        Window("OrcaFind", id: "main") {
             MainView()
                 .environment(state)
                 .environment(CaptureLibrary.shared)
+                .focusEffectDisabled()
                 .frame(minWidth: 1080, minHeight: 720)
                 .onOpenURL { URLRouter.handle($0) }
         }
@@ -27,17 +29,10 @@ struct OrcaFindApp: App {
         Settings {
             SettingsView()
                 .environment(state)
+                .focusEffectDisabled()
         }
 
-        MenuBarExtra(isInserted: Binding(
-            get: { state.prefs.showMenuBar }, set: { state.prefs.showMenuBar = $0 })) {
-            MenuBarView()
-                .environment(state)
-        } label: {
-            Image(nsImage: MenuBarGlyph.image)
-                .accessibilityLabel("Orca Find")
-        }
-        .menuBarExtraStyle(.window)
+        // The menu bar icon is our own status item (UI/MenuBar.swift), so files can be dropped on it.
     }
 }
 
@@ -45,7 +40,7 @@ struct OrcaFindApp: App {
 enum MenuBarGlyph {
     static let image: NSImage = {
         let img = Bundle.main.image(forResource: "MenuBarIcon")
-            ?? NSImage(systemSymbolName: "magnifyingglass.circle", accessibilityDescription: "Orca Find")!
+            ?? NSImage(systemSymbolName: "magnifyingglass.circle", accessibilityDescription: "OrcaFind")!
         img.size = NSSize(width: 18, height: 18)
         img.isTemplate = true
         return img
@@ -163,8 +158,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             HotKeyCenter.shared.handler = { QuickSearchController.shared.toggle() }
             HotKeyCenter.shared.register(prefs.quickSearchHotKey)
             HotKeyCenter.shared.setHandler(.capture) { CaptureController.shared.start() }
+            ShareMenu.enableOnce()
             if prefs.capturesEnabled { HotKeyCenter.shared.register(prefs.captureHotKey, slot: .capture) }
+            HotKeyCenter.shared.setHandler(.shelf) { DropShelfController.shared.toggle() }
+            if prefs.shelfEnabled { HotKeyCenter.shared.register(prefs.shelfHotKey, slot: .shelf) }
             _ = AppState.shared
+            MenuBarController.shared.sync()
+            DropShelfController.shared.sync()
+            OrcaServices.register()
+            SpotlightIndex.start()
+            Updater.shared.start()
             FileIndex.shared.onReady.append {
                 TidyModel.shared.scan()
             }
@@ -175,6 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Once: re-listen to older voice notes so ones that lost words get them back.
             NoteTranscriber.startupPass()
             installKeyMonitor()
+            MenuProbe.runIfRequested()
         }
     }
 
@@ -183,6 +187,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { MainActor.assumeIsolated { AppState.shared.openMainWindow() } }
         return true
+    }
+
+    func application(_ application: NSApplication, continue userActivity: NSUserActivity,
+                     restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void) -> Bool {
+        MainActor.assumeIsolated { SpotlightIndex.open(userActivity) }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

@@ -329,17 +329,31 @@ enum CopySaver {
 
     /// Undo a save: the copy goes to the Trash.
     static func undo(_ url: URL) {
-        try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+        var trashed: NSURL?
+        guard (try? FileManager.default.trashItem(at: url, resultingItemURL: &trashed)) != nil else { return }
         FileIndex.shared.remove(paths: [url.path])
+        if let t = trashed as URL? {
+            RemovalLog.shared.recordTrashed([(url, t, RemovalLog.fileSize(t))], automatic: false, reason: "Edited copy", from: "Preview")
+        }
     }
 
     /// Replace the original with the copy: the original goes to the Trash (so it can come back),
     /// the copy takes the original's name (keeping its own extension if the format changed).
     static func replaceOriginal(_ original: FileItem, with copy: URL) throws -> URL {
         let target = original.url.deletingPathExtension().appendingPathExtension(copy.pathExtension)
-        try FileManager.default.trashItem(at: original.url, resultingItemURL: nil)
+        var trashed: NSURL?
+        try FileManager.default.trashItem(at: original.url, resultingItemURL: &trashed)
         FileIndex.shared.remove(paths: [original.path])
-        if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.trashItem(at: target, resultingItemURL: nil) }
+        if let t = trashed as URL? {
+            RemovalLog.shared.recordReplaced(original: original.url, trashed: t, size: original.size, copyName: target.lastPathComponent)
+        }
+        if FileManager.default.fileExists(atPath: target.path) {
+            // Another file already had the copy's new name (same name, other format): it goes to the Trash too.
+            var other: NSURL?
+            let size = RemovalLog.fileSize(target)
+            try FileManager.default.trashItem(at: target, resultingItemURL: &other)
+            if let o = other as URL? { RemovalLog.shared.recordReplaced(original: target, trashed: o, size: size, copyName: target.lastPathComponent) }
+        }
         try FileManager.default.moveItem(at: copy, to: target)
         FileIndex.shared.remove(paths: [copy.path])
         register(target, like: original)

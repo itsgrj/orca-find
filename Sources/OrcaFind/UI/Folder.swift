@@ -11,6 +11,15 @@ struct Thumb: View {
 
     @State private var image: NSImage?
 
+    /// Starts from the in-memory cache so a freshly made view (a drag preview, a re-rendered row) shows the
+    /// real picture straight away instead of the placeholder; `.task` only has to load what isn't cached.
+    init(item: FileItem, size: CGFloat, mode: Mode = .fill) {
+        self.item = item
+        self.size = size
+        self.mode = mode
+        _image = State(initialValue: ThumbnailCache.shared.cached(item, size: size))
+    }
+
     var body: some View {
         Group {
             if let image {
@@ -102,6 +111,39 @@ struct FrontPocket: Shape {
     }
 }
 
+/// The frosted front pocket of a glass folder (200 × 168 artboard, scaled by `s`).
+/// On macOS `.ultraThinMaterial` blurs what is behind the *window*, so on its own it hides the folder's
+/// items. Here the folder's own back plate and items (`behind`) are blurred and shown through the glass.
+struct GlassPocket<Behind: View>: View {
+    var glass: (Color, Color)
+    var hairline: Double
+    var s: CGFloat = 1
+    @ViewBuilder var behind: Behind
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            behind
+                .frame(width: 200 * s, height: 168 * s, alignment: .topLeading)
+                .blur(radius: 15 * s)
+                .drawingGroup()   // flatten the blur into one image: cheaper, and it shows up in snapshots too
+                .mask(alignment: .topLeading) {
+                    FrontPocket().frame(width: 200 * s, height: 110 * s).offset(y: 58 * s)
+                }
+                .allowsHitTesting(false)
+
+            FrontPocket()
+                .fill(scheme == .dark ? Color(hex: 0x1E1F22, alpha: 0.4) : Color.white.opacity(0.3))
+                .overlay(FrontPocket().fill(LinearGradient(colors: [glass.0, glass.1], startPoint: .top, endPoint: .bottom)))
+                .overlay(FrontPocket().stroke(Color.white.opacity(hairline), lineWidth: 1))
+                .frame(width: 200 * s, height: 110 * s)
+                .offset(y: 58 * s)
+                .shadow(color: .black.opacity(0.12), radius: 10 * s, y: 8 * s)
+        }
+        .frame(width: 200 * s, height: 168 * s, alignment: .topLeading)
+    }
+}
+
 enum FolderStyle {
     case prints, frames, music, sheets, icons
     static func of(_ c: FileCategory) -> FolderStyle {
@@ -130,22 +172,18 @@ struct GlassFolder: View {
         let s = width / 200
         Button(action: action) {
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 18 * s, style: .continuous)
-                    .fill(LinearGradient(colors: [palette.back.0, palette.back.1], startPoint: .top, endPoint: .bottom))
-                    .frame(width: 184 * s, height: 126 * s)
-                    .offset(x: 8 * s, y: 8 * s)
+                backPlate(s)
                     .shadow(color: .black.opacity(0.14), radius: 14 * s, y: 12 * s)
 
                 contents(s)
                     .offset(y: hovering ? -4 * s : 0)
 
-                FrontPocket()
-                    .fill(.ultraThinMaterial)
-                    .overlay(FrontPocket().fill(LinearGradient(colors: [palette.glass.0, palette.glass.1], startPoint: .top, endPoint: .bottom)))
-                    .overlay(FrontPocket().stroke(Color.white.opacity(palette.lightButton ? 0.22 : 0.65), lineWidth: 1))
-                    .frame(width: 200 * s, height: 110 * s)
-                    .offset(y: 58 * s)
-                    .shadow(color: .black.opacity(0.12), radius: 10 * s, y: 8 * s)
+                GlassPocket(glass: palette.glass, hairline: palette.lightButton ? 0.22 : 0.65, s: s) {
+                    ZStack(alignment: .topLeading) {
+                        backPlate(s)
+                        contents(s).offset(y: hovering ? -4 * s : 0)
+                    }
+                }
 
                 VStack(alignment: .leading, spacing: 3 * s) {
                     Text(title).font(DS.px(16 * s)).foregroundStyle(palette.text).lineLimit(1)
@@ -169,6 +207,13 @@ struct GlassFolder: View {
         .buttonStyle(.plain)
         .onHover { h in withAnimation(.spring(duration: 0.25)) { hovering = h } }
         .handCursor()
+    }
+
+    private func backPlate(_ s: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 18 * s, style: .continuous)
+            .fill(LinearGradient(colors: [palette.back.0, palette.back.1], startPoint: .top, endPoint: .bottom))
+            .frame(width: 184 * s, height: 126 * s)
+            .offset(x: 8 * s, y: 8 * s)
     }
 
     @ViewBuilder private func contents(_ s: CGFloat) -> some View {

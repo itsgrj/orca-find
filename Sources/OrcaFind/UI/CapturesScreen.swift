@@ -294,13 +294,15 @@ struct CaptureFolderTile: View {
 
                 prints.offset(y: hovering ? -6 : 0)
 
-                FrontPocket()
-                    .fill(.ultraThinMaterial)
-                    .overlay(FrontPocket().fill(LinearGradient(colors: [palette.glass.0, palette.glass.1], startPoint: .top, endPoint: .bottom)))
-                    .overlay(FrontPocket().stroke(Color.white.opacity(0.55), lineWidth: 1))
-                    .frame(width: 200, height: 110)
-                    .offset(y: 58)
-                    .shadow(color: .black.opacity(0.12), radius: 10, y: 8)
+                GlassPocket(glass: palette.glass, hairline: 0.55) {
+                    ZStack(alignment: .topLeading) {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(LinearGradient(colors: [palette.back.0, palette.back.1], startPoint: .top, endPoint: .bottom))
+                            .frame(width: 184, height: 126)
+                            .offset(x: 8, y: 8)
+                        prints.offset(y: hovering ? -6 : 0)
+                    }
+                }
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(DS.px(16)).foregroundStyle(palette.text).lineLimit(1)
@@ -606,10 +608,7 @@ struct CaptureDetailScreen: View {
                 Button("Show Picture in Finder") { NSWorkspace.shared.activateFileViewerSelecting([c.imageURL]) }
                 if c.hasClip {
                     Button("Show Clip in Finder") { NSWorkspace.shared.activateFileViewerSelecting([c.clipURL]) }
-                    Button("Delete Clip, Keep Picture") {
-                        try? FileManager.default.removeItem(at: c.clipURL)
-                        var c = c; c.clipSeconds = nil; library.update(c)
-                    }
+                    Button("Delete Clip, Keep Picture") { library.deleteClip(c) }
                 }
                 Divider()
                 Button("Delete Capture", role: .destructive) { library.delete(c); state.navigate(.captures) }
@@ -696,6 +695,30 @@ struct CaptureDetailScreen: View {
                             Spacer()
                             Text(link.label).font(DS.caption).lineLimit(1).fixedSize()
                                 .foregroundStyle(link.pasted ? DS.Tone.magic.fg : DS.text2)
+                        }
+                    }
+                }
+            }
+
+            if let path = c.filePath {
+                // Shared from Finder: Orca remembers where the file is rather than keeping a copy.
+                let url = URL(fileURLWithPath: path)
+                let exists = FileManager.default.fileExists(atPath: path)
+                box {
+                    Text("File").font(DS.bodySM).foregroundStyle(DS.text)
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc").font(.system(size: 10)).foregroundStyle(DS.text2)
+                        Button { NSWorkspace.shared.open(url) } label: {
+                            Text(url.lastPathComponent).font(DS.caption).foregroundStyle(exists ? DS.link : DS.text3)
+                                .lineLimit(1).truncationMode(.middle)
+                        }
+                        .buttonStyle(.plain).handCursor().disabled(!exists)
+                        Spacer()
+                        if exists {
+                            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                                .buttonStyle(.plain).font(DS.caption).foregroundStyle(DS.link).handCursor()
+                        } else {
+                            Text("Moved or deleted").font(DS.caption).foregroundStyle(DS.text3)
                         }
                     }
                 }

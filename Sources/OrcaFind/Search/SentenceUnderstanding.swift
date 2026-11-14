@@ -51,11 +51,7 @@ enum SentenceUnderstanding {
     }
 
     private static let instructions = """
-    You turn a person's request to find a file on their Mac into search filters. Reply with JSON only, no prose, with keys:
-    looksLike (array of short phrases for what the file visually shows: objects, animals, scenes, documents like receipts; keep colour words in the phrase, e.g. "blue cover"; empty if nothing visual),
-    visualWords (object: for each looksLike phrase, 4-6 simple single-word nouns a photo classifier would use for it, most likely specific thing first, e.g. "seaside": ["beach","ocean","sea","shore","water","sand"], "bill": ["receipt","document"]; when a description names an animal or object only indirectly, put its most likely name first),
-    withinDays (integer days back the file is from; "a few days ago" = 7, "the other day" = 7, "last month" = 31, "recently" = 14; 0 if no time is mentioned).
-    Only use what the person said. Ignore the person themselves ("me", "I") and file kinds like photo, image, pdf, video.
+    You help a person find a file on their Mac. Read what they typed and fill in only what they actually said; leave things empty when they didn't say them.
     """
 
     static func refine(_ text: String) async -> SentenceRefinement? {
@@ -64,8 +60,11 @@ enum SentenceUnderstanding {
             guard status == .available else { return nil }
             do {
                 let session = LanguageModelSession(instructions: instructions)
-                let response = try await session.respond(to: text, options: GenerationOptions(sampling: .greedy))
-                return parse(response.content)
+                // The answer is filled straight into `SearchReading`'s fields, so it always has the right shape,
+                // and the token cap stops a runaway answer (free-text replies used to ramble for ~50 s).
+                let response = try await session.respond(to: text, generating: SearchReading.self,
+                                                         options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 300))
+                return response.content.refinement
             } catch {
                 return nil
             }
@@ -73,16 +72,64 @@ enum SentenceUnderstanding {
         #endif
         return nil
     }
+}
 
-    static func parse(_ raw: String) -> SentenceRefinement? {
-        var s = raw.replacingOccurrences(of: "```json", with: "").replacingOccurrences(of: "```", with: "")
-        if let a = s.firstIndex(of: "{"), let b = s.lastIndex(of: "}") { s = String(s[a...b]) }
-        guard let obj = (try? JSONSerialization.jsonObject(with: Data(s.utf8))) as? [String: Any] else { return nil }
-        var out = SentenceRefinement()
-        let phrases = (obj["looksLike"] as? [String]) ?? []
-        let words = (obj["visualWords"] as? [String: [String]]) ?? [:]
-        out.looks = phrases.map { p in SentenceRefinement.Look(phrase: p, words: (words[p] ?? []) + p.split(separator: " ").map(String.init)) }
-        out.withinDays = (obj["withinDays"] as? Int) ?? Int((obj["withinDays"] as? Double) ?? 0)
-        return out
+#if canImport(FoundationModels)
+/// What Apple Intelligence fills in for a search sentence. Fields are generated in this order.
+@available(macOS 26.0, *)
+@Generable(description: "How to search for the file the person describes")
+struct SearchReading {
+    @Guide(description: """
+    Each thing that would be visible in the picture or on the page: objects, animals, food, plants, buildings, \
+    landscapes and scenes (a beach, a kitchen, a concert, a wedding), and kinds of paper such as a receipt, a menu, \
+    a diagram or handwriting. One entry per thing, keeping its describing words with it ("red car", "snowy mountains", \
+    "birthday cake"). Leave out actions (sleeping, holding, parked), the person and people they know, countries and \
+    cities, named days and holidays, what a document is about (insurance, revenue, a project), and kinds of file \
+    (photo, picture, screenshot, pdf, video, document). Empty when nothing visible is described.
+    """)
+    var things: [SeenThing]
+
+    @Guide(description: """
+    How many days back from today the file is from, only when the person says how long ago: \
+    "a few days ago" or "the other day" = 7, "recently" = 14, "a while back" = 30, "last month" = 31. \
+    0 when they don't say, and 0 for named days and holidays like "new year's eve" or "my birthday".
+    """, .range(0...3650))
+    var daysBack: Int
+
+    var refinement: SentenceRefinement {
+        SentenceRefinement(
+            looks: things.compactMap { t in
+                let phrase = Self.tidy(t.phrase)
+                guard !phrase.isEmpty else { return nil }
+                return SentenceRefinement.Look(phrase: phrase, words: t.labels + phrase.split(separator: " ").map(String.init))
+            },
+            withinDays: daysBack)
+    }
+
+    /// "photos of my car" → "car", "a photo where my kid…" → "kid…": the model sometimes copies the lead-in.
+    static func tidy(_ phrase: String) -> String {
+        let lead: Set<String> = ["a", "an", "the", "my", "our", "his", "her", "their", "this", "that", "some", "of", "where", "with",
+                                 "photo", "photos", "picture", "pictures", "pic", "pics", "image", "images", "screenshot", "screenshots",
+                                 "scan", "scans", "scanned", "file", "files"]
+        var words = phrase.lowercased().split(separator: " ").map(String.init)
+        while let f = words.first, lead.contains(f) { words.removeFirst() }
+        return words.joined(separator: " ")
     }
 }
+
+@available(macOS 26.0, *)
+@Generable
+struct SeenThing {
+    @Guide(description: """
+    Just the thing itself: a noun with at most two describing words, in the person's own words, \
+    e.g. "seaside", "red car", "bill", "balloon". Never a whole phrase like "photo of my car" or "kid holding a balloon".
+    """)
+    var phrase: String
+
+    @Guide(description: """
+    Simple one-word nouns a photo classifier would use for this thing, the most likely specific one first: \
+    "seaside" → beach, ocean, shore; "bill" → receipt; "big striped cat" → tiger, cat.
+    """, .count(1...6))
+    var labels: [String]
+}
+#endif

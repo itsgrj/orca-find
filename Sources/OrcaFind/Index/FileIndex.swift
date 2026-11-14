@@ -208,13 +208,13 @@ final class FileIndex {
     // MARK: - Live updates
 
     private func startWatcher() {
-        watcher = FSWatcher(paths: roots.map { $0.url.path }) { paths in
+        watcher = FSWatcher(paths: roots.filter(\.watched).map { $0.url.path }) { paths in
             Task { @MainActor in FileIndex.shared.handle(events: paths) }
         }
     }
 
     private func handle(events: [String]) {
-        let roots = self.roots
+        let roots = self.roots.filter(\.watched)
         let unique = Array(Set(events))
         Task.detached(priority: .utility) {
             var upserts: [FileItem] = []
@@ -223,7 +223,7 @@ final class FileIndex {
                 let comps = p.split(separator: "/")
                 if comps.contains(where: { $0.hasPrefix(".") }) { continue }
                 if comps.contains(where: { FileScanner.protectedPackageExts.contains((String($0) as NSString).pathExtension.lowercased()) }) { continue }
-                guard let root = roots.first(where: { p.hasPrefix($0.url.path + "/") }) else { continue }
+                guard let root = FileScanner.root(for: p, in: roots) else { continue }
                 let url = URL(fileURLWithPath: p)
                 var isDir: ObjCBool = false
                 if FileManager.default.fileExists(atPath: p, isDirectory: &isDir) {
@@ -250,6 +250,14 @@ final class FileIndex {
     }
 
     // MARK: - Convenience
+
+    /// What the clean-up tools may suggest: everything except files in search-only folders
+    /// (the person's own folders in their home folder, like "SigmaFlow").
+    var tidyItems: [FileItem] {
+        let roots = self.roots
+        guard roots.contains(where: \.searchOnly) else { return items }
+        return items.filter { FileScanner.root(for: $0.path, in: roots)?.searchOnly != true }
+    }
 
     var downloads: [FileItem] {
         items.filter { $0.rootName == "Downloads" }

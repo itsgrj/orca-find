@@ -22,7 +22,7 @@ final class VoiceSearch {
     @ObservationIgnored private var silenceTask: Task<Void, Never>?
     @ObservationIgnored private var onUpdate: ((String) -> Void)?
     @ObservationIgnored private var onFinish: ((String) -> Void)?
-    @ObservationIgnored private(set) var owner: String = ""
+    @ObservationIgnored var owner: String = ""
 
     static let hints = ["pdf", "pdfs", "screenshots", "gmail", "google drive", "chatgpt", "canva", "slack", "whatsapp",
                         "github", "dmg", "zip", "zips", "megabytes", "gigabytes", "mb", "gb", "iphone", "downloads",
@@ -43,11 +43,11 @@ final class VoiceSearch {
         Task {
             defer { self.isStarting = false }
             guard await VoiceSearch.requestSpeechPermission() else {
-                self.error = "Speech recognition is off for Orca Find. Turn it on in System Settings › Privacy & Security › Speech Recognition."
+                self.error = "Speech recognition is off for OrcaFind. Turn it on in System Settings › Privacy & Security › Speech Recognition."
                 return
             }
             guard await AVCaptureDevice.requestAccess(for: .audio) else {
-                self.error = "Microphone access is off for Orca Find. Turn it on in System Settings › Privacy & Security › Microphone."
+                self.error = "Microphone access is off for OrcaFind. Turn it on in System Settings › Privacy & Security › Microphone."
                 return
             }
             do { try self.begin() } catch { self.error = error.localizedDescription }

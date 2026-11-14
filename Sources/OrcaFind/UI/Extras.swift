@@ -1,97 +1,13 @@
 import SwiftUI
 import Speech
 
-// MARK: - Menu bar
-
-struct MenuBarView: View {
-    @Environment(AppState.self) private var state
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
-
-    var body: some View {
-        let downloads = Array(state.homeStats.latestDownloads.prefix(10))
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Latest downloads").font(DS.headingSM).foregroundStyle(DS.text)
-                Spacer()
-                Button("Open Orca Find") { open() }.buttonStyle(.plain).font(DS.bodySM).foregroundStyle(DS.link)
-            }
-            .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
-            if downloads.isEmpty {
-                Text(state.index.isReady ? "Nothing in Downloads yet" : "Getting ready…").font(DS.bodySM).foregroundStyle(DS.text2).frame(maxWidth: .infinity).padding(24)
-            } else {
-                VStack(spacing: 1) { ForEach(downloads) { MenuDownloadRow(item: $0) } }.padding(.horizontal, 6)
-            }
-            if let cur = state.player.current {
-                Rectangle().fill(DS.border).frame(height: 1).padding(.top, 6)
-                HStack(spacing: 10) {
-                    Thumb(item: cur, size: 60).frame(width: 30, height: 30).clipShape(RoundedRectangle(cornerRadius: 6))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(state.player.title).font(DS.bodySM).foregroundStyle(DS.text).lineLimit(1)
-                        Text("\(Fmt.duration(state.player.position)) / \(Fmt.duration(state.player.duration))").font(DS.caption).foregroundStyle(DS.text2)
-                    }
-                    Spacer()
-                    Button { state.player.previous() } label: { Image(systemName: "backward.fill") }.buttonStyle(.plain)
-                    Button { state.player.toggle() } label: { Image(systemName: state.player.isPlaying ? "pause.fill" : "play.fill") }.buttonStyle(.plain)
-                    Button { state.player.next() } label: { Image(systemName: "forward.fill") }.buttonStyle(.plain)
-                }
-                .font(.system(size: 12)).foregroundStyle(DS.text)
-                .padding(.horizontal, 14).padding(.vertical, 8)
-            }
-            Rectangle().fill(DS.border).frame(height: 1).padding(.top, 6)
-            HStack(spacing: 10) {
-                Button { QuickSearchController.shared.show() } label: {
-                    HStack(spacing: 6) { Image(systemName: "magnifyingglass"); Text("Quick Search").font(DS.bodySM); Kbd(state.prefs.quickSearchHotKey.display) }
-                }.buttonStyle(.plain)
-                Spacer()
-                Button { NSApp.activate(ignoringOtherApps: true); openSettings() } label: { Image(systemName: "gearshape") }.buttonStyle(.plain).help("Settings")
-                Button { NSApp.terminate(nil) } label: { Text("Quit").font(DS.bodySM) }.buttonStyle(.plain)
-            }
-            .foregroundStyle(DS.text2)
-            .padding(.horizontal, 14).padding(.vertical, 10)
-        }
-        .frame(width: 380)
-        .onAppear { if state.openWindowAction == nil { state.openWindowAction = openWindow } }
-    }
-
-    private func open() {
-        if state.openWindowAction == nil { state.openWindowAction = openWindow }
-        state.openMainWindow()
-    }
-}
-
-private struct MenuDownloadRow: View {
-    let item: FileItem
-    @State private var hovering = false
-    var body: some View {
-        HStack(spacing: 10) {
-            Thumb(item: item, size: 60, mode: item.category == .images || item.category == .videos ? .fill : (item.category == .documents ? .page : .fit))
-                .frame(width: 30, height: 30).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 7))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.name).font(DS.bodySM).foregroundStyle(DS.text).lineLimit(1).truncationMode(.middle)
-                Text("\(Fmt.size(item.size)) · \(Fmt.relative(item.added ?? item.activityDate))").font(DS.caption).foregroundStyle(DS.text2).lineLimit(1)
-            }
-            Spacer()
-            if hovering {
-                HStack(spacing: 4) { Image(systemName: "hand.draw"); Text("Drag into any app") }.font(DS.caption).foregroundStyle(DS.text2)
-            } else if let s = item.source { Badge(s.name, tone: .info) }
-        }
-        .padding(.horizontal, 8).padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? DS.hover : .clear))
-        .contentShape(Rectangle())
-        .onHover { hovering = $0 }
-        .onTapGesture { FileActions.open([item]) }
-        .onDrag { NSItemProvider(object: item.url as NSURL) }
-        .contextMenu { Button("Show in Finder") { FileActions.revealInFinder([item]) } }
-    }
-}
-
 // MARK: - Settings
 
 struct SettingsView: View {
     @Environment(AppState.self) private var state
-    enum Pane: String, CaseIterable { case general = "General", captures = "Captures", library = "Library", voice = "Search & Voice", privateAI = "Private AI", cleanup = "Clean Up", privacy = "Privacy" }
-    @State private var pane: Pane = .general
+    enum Pane: String, CaseIterable { case general = "General", menuBar = "Menu Bar", captures = "Captures", library = "Library", voice = "Search & Voice", privateAI = "Private AI", cleanup = "Clean Up", privacy = "Privacy" }
+    @State private var pane: Pane
+    init(pane: Pane = .general) { _pane = State(initialValue: pane) }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -119,6 +35,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     switch pane {
                     case .general: general
+                    case .menuBar: menuBar
                     case .captures: CapturesSettings()
                     case .library: library
                     case .voice: voice
@@ -138,6 +55,7 @@ struct SettingsView: View {
     private func icon(_ p: Pane) -> String {
         switch p {
         case .general: return "gearshape"
+        case .menuBar: return "menubar.rectangle"
         case .captures: return "viewfinder"
         case .library: return "folder"
         case .voice: return "mic"
@@ -188,31 +106,75 @@ struct SettingsView: View {
             }
             .padding(14)
         }
-        group("Quick Search & menu bar") {
+        group("Quick Search") {
             line("Quick Search shortcut") { ShortcutRecorder(combo: $p.quickSearchHotKey) }
-            line("Show latest downloads in the menu bar") { Toggle("", isOn: $p.showMenuBar).toggleStyle(.switch).labelsHidden() }
-            line("Open Orca Find at login", last: true) { Toggle("", isOn: Binding(get: { p.launchAtLogin }, set: { p.launchAtLogin = $0 })).toggleStyle(.switch).labelsHidden() }
+            line("Open OrcaFind at login", last: true) { Toggle("", isOn: Binding(get: { p.launchAtLogin }, set: { p.launchAtLogin = $0 })).toggleStyle(.switch).labelsHidden() }
         }
         group("Cards") {
             line("Card size", last: true) { Slider(value: $p.cardSize, in: 110...320).frame(width: 220) }
         }
+        UpdatesSettings()
+    }
+
+    @ViewBuilder private var menuBar: some View {
+        @Bindable var p = state.prefs
+        group("Menu bar") {
+            line("Show OrcaFind in the menu bar", last: true) { Toggle("", isOn: $p.showMenuBar).toggleStyle(.switch).labelsHidden() }
+        }
+        Text(p.showMenuBar ? "Click the orca for your latest downloads. Drag a file onto it to put it away."
+             : "The orca is hidden. Quick Search (\(p.quickSearchHotKey.display)) still works from anywhere.")
+            .font(DS.caption).foregroundStyle(DS.text2)
+        group("In the dropdown") {
+            line("Search box") { Toggle("", isOn: $p.menuShowSearch).toggleStyle(.switch).labelsHidden() }
+            line("Tabs for each kind of download") { Toggle("", isOn: $p.menuShowTabs).toggleStyle(.switch).labelsHidden() }
+            line("Capture button") {
+                Toggle("", isOn: $p.menuShowCapture).toggleStyle(.switch).labelsHidden().disabled(!p.capturesEnabled)
+            }
+            line("Downloads shown before scrolling", last: true) {
+                Picker("", selection: $p.menuDownloadCount) {
+                    ForEach([5, 8, 10, 12, 15], id: \.self) { Text("\($0)").tag($0) }
+                }
+                .labelsHidden().frame(width: 90)
+            }
+        }
+        .disabled(!p.showMenuBar).opacity(p.showMenuBar ? 1 : 0.5)
+        Text(p.capturesEnabled ? "The dropdown opens on your newest downloads. Scroll down for older ones from the past month."
+             : "Captures are turned off in Settings › Captures, so the Capture button stays hidden.")
+            .font(DS.caption).foregroundStyle(DS.text2)
+        group("Drop Shelf") {
+            line("Drop Shelf") { Toggle("", isOn: $p.shelfEnabled).toggleStyle(.switch).labelsHidden() }
+            line("Open it when you start dragging a file") { Toggle("", isOn: $p.shelfOnDrag).toggleStyle(.switch).labelsHidden().disabled(!p.shelfEnabled) }
+            line("Open it when the pointer rests on the notch") { Toggle("", isOn: $p.shelfOnNotch).toggleStyle(.switch).labelsHidden().disabled(!p.shelfEnabled) }
+            line("Shortcut", last: true) { ShortcutRecorder(combo: $p.shelfHotKey, defaultCombo: .defaultShelf).disabled(!p.shelfEnabled) }
+        }
+        Text("A place to park files while you move them between apps. Drop on a pinned folder to file it there, or leave it in Holding and drag it out later.")
+            .font(DS.caption).foregroundStyle(DS.text2)
     }
 
     @ViewBuilder private var library: some View {
         @Bindable var p = state.prefs
-        group("Folders Orca Find looks in") {
+        group("Folders OrcaFind looks in") {
             ForEach(FileScanner.defaultFolderNames(), id: \.self) { name in
                 line(name) {
                     Toggle("", isOn: Binding(get: { !p.disabledDefaultFolders.contains(name) }, set: { on in
                         if on { p.disabledDefaultFolders.removeAll { $0 == name } } else { p.disabledDefaultFolders.append(name) }
+                        state.index.rescan()
                     })).toggleStyle(.switch).labelsHidden()
                 }
+            }
+            line("Everything else in your home folder") {
+                Toggle("", isOn: Binding(get: { !p.disabledDefaultFolders.contains(FileScanner.homeSettingName) }, set: { on in
+                    if on { p.disabledDefaultFolders.removeAll { $0 == FileScanner.homeSettingName } }
+                    else { p.disabledDefaultFolders.append(FileScanner.homeSettingName) }
+                    state.index.rescan()
+                })).toggleStyle(.switch).labelsHidden()
             }
             ForEach(p.extraFolders, id: \.self) { path in
                 line((path as NSString).abbreviatingWithTildeInPath) { Button("Remove") { p.extraFolders.removeAll { $0 == path } }.buttonStyle(.secondary) }
             }
             line("Applications", last: true) { Text("Always included").font(DS.bodySM).foregroundStyle(DS.text2) }
         }
+        Text(homeFolderNote).font(DS.caption).foregroundStyle(DS.text2)
         HStack {
             Button("Add Folder…") { addFolder() }.buttonStyle(.secondary)
             Button("Rescan Now") { state.index.rescan() }.buttonStyle(.secondary)
@@ -299,7 +261,7 @@ struct SettingsView: View {
     @ViewBuilder private var privacy: some View {
         HStack(spacing: 10) {
             Image(systemName: "checkmark.shield").foregroundStyle(DS.Tone.success.fg)
-            Text("Your files never leave this Mac. Reading text, looking at pictures, understanding sentences (Apple Intelligence), duplicate checks and voice all run locally; Orca Find doesn't send anything anywhere.")
+            Text("Your files never leave this Mac. Reading text, looking at pictures, understanding sentences (Apple Intelligence), duplicate checks and voice all run locally; OrcaFind doesn't send anything anywhere.")
                 .font(DS.body).foregroundStyle(DS.Tone.success.fg)
         }
         .padding(14).background(RoundedRectangle(cornerRadius: 12).fill(DS.Tone.success.bg))
@@ -307,6 +269,20 @@ struct SettingsView: View {
             line("Desktop, Documents & Downloads") { Button("Open System Settings") { Onboarding.openFilesPrivacy() }.buttonStyle(.secondary) }
             line("Microphone & Speech Recognition", last: true) { Button("Open System Settings") { Onboarding.openMicPrivacy() }.buttonStyle(.secondary) }
         }
+    }
+
+    /// "Your own folders, like Claude and SigmaFlow, are searched too. Orca never suggests cleaning them up…"
+    private var homeFolderNote: String {
+        let home = URL(fileURLWithPath: NSHomeDirectory())
+        let names = FileScanner.homeRoots(home: home, skipping: Set(FileScanner.defaultFolderNames()))
+            .filter { $0.maxDepth > 1 }.map(\.name)
+        let like: String
+        switch names.count {
+        case 0: like = "Folders you keep in your home folder"
+        case 1: like = "Your own folders, like \(names[0]),"
+        default: like = "Your own folders, like \(names.prefix(2).joined(separator: " and ")),"
+        }
+        return "\(like) are searched too. Orca never suggests cleaning them up, and it skips the hidden Library folder, where apps keep their own data."
     }
 
     private func addFolder() {
@@ -364,103 +340,10 @@ enum Onboarding {
     static func openFilesPrivacy() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")!)
     }
+    static func openFullDiskAccess() {
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")!)
+    }
     static func openMicPrivacy() {
         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
-    }
-}
-
-struct OnboardingView: View {
-    @Environment(AppState.self) private var state
-    @State private var access: [String: Bool] = [:]
-    /// Step 2: Orca's private AI (skipped when everything is already unlocked).
-    @State private var showAI = false
-    private let folders = [("Desktop", "menubar.dock.rectangle"), ("Documents", "doc.text"), ("Downloads", "arrow.down.circle")]
-
-    var body: some View {
-        ZStack {
-            AppBackground(style: .dots)
-            VStack(alignment: .leading, spacing: 18) {
-              if showAI {
-                PrivateAIOnboarding { state.prefs.onboarded = true; state.focusSearch() }
-              } else {
-                Text("Welcome to Orca Find").font(DS.display).foregroundStyle(DS.text)
-                Text("Your files as big, clear cards — and a search that understands plain English, or your voice. First, let it see your folders.")
-                    .font(DS.body).foregroundStyle(DS.text2).fixedSize(horizontal: false, vertical: true)
-                VStack(spacing: 0) {
-                    ForEach(Array(folders.enumerated()), id: \.offset) { i, f in
-                        HStack(spacing: 12) {
-                            Image(systemName: f.1).frame(width: 32, height: 32).background(RoundedRectangle(cornerRadius: 8).fill(DS.surface)).foregroundStyle(DS.text)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(f.0).font(DS.body).foregroundStyle(DS.text)
-                                Text(access[f.0] == true ? "Allowed" : "Needed to show and search these files").font(DS.caption).foregroundStyle(DS.text2)
-                            }
-                            Spacer()
-                            if access[f.0] == true { Badge("Allowed ✓", tone: .success) }
-                            else { Button("Allow access") { request(f.0) }.buttonStyle(.primary) }
-                        }
-                        .padding(.horizontal, 14).padding(.vertical, 12)
-                        if i < folders.count - 1 { Rectangle().fill(DS.border).frame(height: 1) }
-                    }
-                }
-                .background(RoundedRectangle(cornerRadius: 12).fill(DS.surface2))
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(state.index.isScanning ? "Getting to know your files…" : state.index.isReady ? "Found \(Fmt.count(state.homeStats.totalCount)) files" : "Starting…").font(DS.body).foregroundStyle(DS.text)
-                        Spacer()
-                        if state.index.isScanning { Text("\(Fmt.count(state.index.scannedCount)) so far").font(DS.bodySM).foregroundStyle(DS.text2) }
-                    }
-                    ProgressView(value: state.index.isReady ? (state.index.textTotal == 0 ? 1 : Double(state.index.textDone) / Double(max(1, state.index.textTotal))) : 0.15)
-                        .tint(DS.brand)
-                    if state.index.textTotal > 0 && state.index.textDone < state.index.textTotal {
-                        Text("Reading text in images · \(Fmt.count(state.index.textDone)) of \(Fmt.count(state.index.textTotal)) — you can start searching now")
-                            .font(DS.caption).foregroundStyle(DS.text2)
-                    }
-                    if state.index.visualTotal > 0 && state.index.visualDone < state.index.visualTotal {
-                        Text("Looking at photos · \(Fmt.count(state.index.visualDone)) of \(Fmt.count(state.index.visualTotal)) — picture matches fill in as it goes")
-                            .font(DS.caption).foregroundStyle(DS.text2)
-                    }
-                }
-                HStack {
-                    Badge("Nothing leaves this Mac", tone: .success)
-                    Spacer()
-                    Button("Continue") {
-                        if PrivateAI.shared.locked.isEmpty { state.prefs.onboarded = true; state.focusSearch() }
-                        else { withAnimation(.easeOut(duration: 0.2)) { showAI = true } }
-                    }
-                    .buttonStyle(.primary)
-                }
-              }
-            }
-            .padding(34)
-            .frame(width: 620)
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(DS.surface))
-            .shadow(color: .black.opacity(0.16), radius: 30, y: 16)
-        }
-        .task {
-            while !Task.isCancelled {
-                refresh()
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-            }
-        }
-    }
-
-    private func refresh() {
-        let names = folders.map(\.0)
-        Task.detached {
-            var out: [String: Bool] = [:]
-            for n in names { out[n] = Onboarding.canRead(n) }
-            await MainActor.run { access = out }
-        }
-    }
-
-    private func request(_ name: String) {
-        Task.detached {
-            let ok = Onboarding.canRead(name)   // the first read triggers the macOS prompt
-            await MainActor.run {
-                if !ok { Onboarding.openFilesPrivacy() }
-                refresh()
-                if ok { state.index.rescan() }
-            }
-        }
     }
 }

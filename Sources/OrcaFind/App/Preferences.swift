@@ -31,6 +31,8 @@ struct HotKeyCombo: Codable, Equatable {
 
     static let defaultQuickSearch = HotKeyCombo(keyCode: UInt32(kVK_Space),
                                                 modifiers: NSEvent.ModifierFlags([.command, .shift]).rawValue)
+    static let defaultShelf = HotKeyCombo(keyCode: UInt32(kVK_Space),
+                                          modifiers: NSEvent.ModifierFlags([.control, .option]).rawValue)
     static let defaultCapture = HotKeyCombo(keyCode: UInt32(kVK_Space),
                                             modifiers: NSEvent.ModifierFlags([.option, .shift]).rawValue)
 
@@ -92,7 +94,12 @@ final class Preferences {
     var appearance: AppearanceMode {
         didSet { d.set(appearance.rawValue, forKey: "appearance"); NSApp?.appearance = appearance.nsAppearance }
     }
-    var showMenuBar: Bool { didSet { d.set(showMenuBar, forKey: "showMenuBar") } }
+    var showMenuBar: Bool { didSet { d.set(showMenuBar, forKey: "showMenuBar"); MenuBarController.shared.sync() } }
+    // What the menu bar dropdown shows (Settings › Menu Bar).
+    var menuShowSearch: Bool { didSet { d.set(menuShowSearch, forKey: "menuShowSearch") } }
+    var menuShowTabs: Bool { didSet { d.set(menuShowTabs, forKey: "menuShowTabs") } }
+    var menuShowCapture: Bool { didSet { d.set(menuShowCapture, forKey: "menuShowCapture") } }
+    var menuDownloadCount: Int { didSet { d.set(menuDownloadCount, forKey: "menuDownloadCount") } }
     var quickSearchHotKey: HotKeyCombo {
         didSet {
             if let data = try? JSONEncoder().encode(quickSearchHotKey) { d.set(data, forKey: "quickSearchHotKey") }
@@ -113,12 +120,33 @@ final class Preferences {
             if capturesEnabled { HotKeyCenter.shared.register(captureHotKey, slot: .capture) }
         }
     }
+    /// The Drop Shelf: a place to park files while dragging between apps (UI/DropShelf.swift).
+    var shelfEnabled: Bool {
+        didSet {
+            d.set(shelfEnabled, forKey: "shelfEnabled")
+            if shelfEnabled { HotKeyCenter.shared.register(shelfHotKey, slot: .shelf) } else { HotKeyCenter.shared.unregister(.shelf) }
+            DropShelfController.shared.sync()
+        }
+    }
+    var shelfHotKey: HotKeyCombo {
+        didSet {
+            if let data = try? JSONEncoder().encode(shelfHotKey) { d.set(data, forKey: "shelfHotKey") }
+            if shelfEnabled { HotKeyCenter.shared.register(shelfHotKey, slot: .shelf) }
+        }
+    }
+    /// Open the shelf when a file drag starts / when the pointer rests on the notch.
+    var shelfOnDrag: Bool { didSet { d.set(shelfOnDrag, forKey: "shelfOnDrag") } }
+    var shelfOnNotch: Bool { didSet { d.set(shelfOnNotch, forKey: "shelfOnNotch") } }
+    /// Files parked in Holding (by reference; they stay where they are).
+    var shelfHolding: [String] { didSet { d.set(shelfHolding, forKey: "shelfHolding") } }
     /// Keep a short video when what was grabbed is moving.
     var captureClips: Bool { didSet { d.set(captureClips, forKey: "captureClips") } }
     /// Let Apple Intelligence add one or two tags from the words and the picture.
     var captureAutoTags: Bool { didSet { d.set(captureAutoTags, forKey: "captureAutoTags") } }
     var cardSize: Double { didSet { d.set(cardSize, forKey: "cardSize") } }
     var viewMode: ViewMode { didSet { d.set(viewMode.rawValue, forKey: "viewMode") } }
+    /// Recently removed opens in List; remembers Timeline if that was used last.
+    var removedTimeline: Bool { didSet { d.set(removedTimeline, forKey: "removedTimeline") } }
     var ocrEnabled: Bool { didSet { d.set(ocrEnabled, forKey: "ocrEnabled") } }
     /// Look at photos and PDF covers while indexing (labels + main colours), for "Looks like" search.
     var smartPictures: Bool { didSet { d.set(smartPictures, forKey: "smartPictures") } }
@@ -172,6 +200,11 @@ final class Preferences {
         onboarded = d.bool(forKey: "onboarded")
         appearance = AppearanceMode(rawValue: d.string(forKey: "appearance") ?? "") ?? .system
         showMenuBar = d.object(forKey: "showMenuBar") as? Bool ?? true
+        menuShowSearch = d.object(forKey: "menuShowSearch") as? Bool ?? true
+        menuShowTabs = d.object(forKey: "menuShowTabs") as? Bool ?? true
+        menuShowCapture = d.object(forKey: "menuShowCapture") as? Bool ?? true
+        // Rows the dropdown shows before it scrolls (older versions allowed 20 and 30, too tall to scroll well).
+        menuDownloadCount = min(15, max(5, d.object(forKey: "menuDownloadCount") as? Int ?? 10))
         if let data = d.data(forKey: "quickSearchHotKey"), let combo = try? JSONDecoder().decode(HotKeyCombo.self, from: data) {
             quickSearchHotKey = combo
         } else {
@@ -184,9 +217,19 @@ final class Preferences {
             captureHotKey = .defaultCapture
         }
         captureClips = d.object(forKey: "captureClips") as? Bool ?? true
+        shelfEnabled = d.object(forKey: "shelfEnabled") as? Bool ?? true
+        if let data = d.data(forKey: "shelfHotKey"), let combo = try? JSONDecoder().decode(HotKeyCombo.self, from: data) {
+            shelfHotKey = combo
+        } else {
+            shelfHotKey = .defaultShelf
+        }
+        shelfOnDrag = d.object(forKey: "shelfOnDrag") as? Bool ?? true
+        shelfOnNotch = d.object(forKey: "shelfOnNotch") as? Bool ?? true
+        shelfHolding = d.stringArray(forKey: "shelfHolding") ?? []
         captureAutoTags = d.object(forKey: "captureAutoTags") as? Bool ?? true
         cardSize = d.object(forKey: "cardSize") as? Double ?? 168
         viewMode = ViewMode(rawValue: d.string(forKey: "viewMode") ?? "") ?? .grid
+        removedTimeline = d.bool(forKey: "removedTimeline")
         ocrEnabled = d.object(forKey: "ocrEnabled") as? Bool ?? true
         smartPictures = d.object(forKey: "smartPictures") as? Bool ?? true
         smartSentences = d.object(forKey: "smartSentences") as? Bool ?? true

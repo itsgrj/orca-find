@@ -4,13 +4,13 @@ import Observation
 enum AppSection: Hashable {
     case home, library, recents, category(FileCategory), screenshots, largeFiles
     case downloadedFrom(String?)
-    case duplicates, cleanUp, cleanUpReview(CleanupKind)
+    case duplicates, cleanUp, cleanUpReview(CleanupKind), recentlyRemoved
     case smartFolder(UUID), folder(String), search
     case captures, capture(String)
 
     var isBrowser: Bool {
         switch self {
-        case .home, .library, .duplicates, .cleanUp, .cleanUpReview, .captures, .capture: return false
+        case .home, .library, .duplicates, .cleanUp, .cleanUpReview, .recentlyRemoved, .captures, .capture: return false
         default: return true
         }
     }
@@ -22,7 +22,7 @@ enum AppSection: Hashable {
         case .home, .search: return .home
         case .downloadedFrom: return .downloads
         case .captures, .capture: return .captures
-        case .cleanUp, .cleanUpReview, .duplicates: return .tidy
+        case .cleanUp, .cleanUpReview, .duplicates, .recentlyRemoved: return .tidy
         default: return .library
         }
     }
@@ -129,6 +129,8 @@ struct Toast: Identifiable, Equatable {
     let id = UUID()
     let message: String
     var undo: (() -> Void)?
+    /// Adds "See removed", which opens Tidy › Recently removed.
+    var seeRemoved = false
     static func == (a: Toast, b: Toast) -> Bool { a.id == b.id }
 }
 
@@ -152,6 +154,9 @@ struct HomeStats {
     var recentMusic: [FileItem] = []
     var recentDocuments: [FileItem] = []
     var latestDownloads: [FileItem] = []
+    /// The menu bar's downloads: everything downloaded today, or this week when today has none.
+    var recentDownloads: [FileItem] = []
+    var recentDownloadsTitle = "Latest downloads"
     var sources: [SourceSummary] = []
     var recentBy: [FileCategory: [FileItem]] = [:]
     var recentAll: [FileItem] = []
@@ -225,9 +230,13 @@ final class AppState {
     var hiddenBuiltins: Set<String> = [] { didSet { UserDefaults.standard.set(Array(hiddenBuiltins), forKey: "hiddenBuiltinFolders") } }
     var pinnedFolders: [String] = [] { didSet { UserDefaults.standard.set(pinnedFolders, forKey: "pinnedFolders") } }
     var inlineChrome = false
+    /// Home's big search card has scrolled up under the top bar, so the top bar shows its compact search.
+    var homeSearchScrolledAway = false
 
     @ObservationIgnored weak var mainWindow: NSWindow?
     @ObservationIgnored var openWindowAction: OpenWindowAction?
+    /// Captured from the main window, so panels outside the SwiftUI scenes (the menu bar) can open Settings.
+    @ObservationIgnored var openSettingsAction: OpenSettingsAction?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var statsTask: Task<Void, Never>?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
@@ -437,6 +446,11 @@ final class AppState {
         anchorID = first.id
     }
 
+    func openSettingsWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let a = openSettingsAction { a() } else { openMainWindow(); DispatchQueue.main.async { self.openSettingsAction?() } }
+    }
+
     func openMainWindow() {
         NSApp.activate(ignoringOtherApps: true)
         if let w = mainWindow {
@@ -465,7 +479,7 @@ final class AppState {
     private func performRefresh() async {
         let section = self.section
         switch section {
-        case .home, .duplicates, .cleanUp:
+        case .home, .duplicates, .cleanUp, .recentlyRemoved:
             visibleItems = []; visibleSize = 0; isRefreshing = false; return
         case .cleanUpReview(let kind):
             setVisible((tidy.results[kind] ?? []).map(\.item)); return
@@ -605,8 +619,22 @@ final class AppState {
         s.recentVideos = recent(.videos)
         s.recentMusic = recent(.music)
         s.recentDocuments = recent(.documents)
-        s.latestDownloads = Array(items.filter { $0.rootName == "Downloads" }
-            .sorted { ($0.added ?? $0.activityDate) > ($1.added ?? $1.activityDate) }.prefix(14))
+        // A download is anything that remembers where it came from, wherever the browser saved it (same rule
+        // as the Downloads screen), plus loose files sitting directly in ~/Downloads. Files inside subfolders
+        // of Downloads (an unzipped archive, say) aren't downloads in their own right and would crowd the list.
+        let downloadsDir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0].standardizedFileURL.path
+        let allDownloads = items.filter { item in
+            !item.isFolder && (item.source != nil
+                || (item.rootName == "Downloads" && item.url.deletingLastPathComponent().standardizedFileURL.path == downloadsDir))
+        }
+            .sorted { ($0.added ?? $0.activityDate) > ($1.added ?? $1.activityDate) }
+        s.latestDownloads = Array(allDownloads.prefix(14))
+        // The menu bar dropdown: the last month of downloads (at least the latest 30), newest first. It opens on
+        // the newest and scrolls back through older ones; the heading names the newest day.
+        let monthBack = Calendar.current.startOfDay(for: Date()).addingTimeInterval(-29 * 86_400)
+        let month = allDownloads.prefix { ($0.added ?? $0.activityDate) >= monthBack }
+        s.recentDownloads = Array(month.count >= 30 ? month.prefix(150) : allDownloads.prefix(30))
+        s.recentDownloadsTitle = s.recentDownloads.first.map { MenuDay.of($0.added ?? $0.activityDate).heading } ?? "Latest downloads"
         s.sources = sources.values.sorted { a, b in
             if a.source.isWebsite != b.source.isWebsite { return !a.source.isWebsite }
             return a.count > b.count
@@ -760,20 +788,22 @@ final class AppState {
 
     // MARK: - File actions
 
-    func trash(_ items: [FileItem]) {
-        let targets = items.filter { !$0.isFolder }
+    /// `reason`: why these were picked ("Duplicate", "Old installer"), shown in Recently removed.
+    /// `includeFolders`: Tidy's Library leftovers and Mail attachments are folders; elsewhere folders are skipped.
+    func trash(_ items: [FileItem], reason: String? = nil, includeFolders: Bool = false) {
+        let targets = includeFolders ? items : items.filter { !$0.isFolder }
         guard !targets.isEmpty else { return }
-        let result = Trash.move(targets)
+        let result = Trash.move(targets, reason: reason, from: trashPlace)
         let paths = Set(result.moved.map { $0.original.path })
         selection.subtract(paths)
         tidy.remove(paths: paths)
         dupes.removeTrashed(paths)
         if case .folder = section { scheduleRefresh(immediate: true) }
         if result.count > 0 {
-            showToast("Moved \(Fmt.plural(result.count, "item")) to the Trash · \(Fmt.size(result.bytes))") {
+            showToast("Moved \(Fmt.plural(result.count, "item")) to the Trash · \(Fmt.size(result.bytes))", undo: {
                 let n = Trash.restore(result)
                 AppState.shared.showToast("Put back \(Fmt.plural(n, "item"))")
-            }
+            }, seeRemoved: true)
         }
         if !result.failed.isEmpty {
             showToast("Couldn't move \(Fmt.plural(result.failed.count, "item")) to the Trash")
@@ -781,6 +811,17 @@ final class AppState {
     }
 
     func trashSelection() { trash(selectedItems) }
+
+    /// Where a Move to Trash happened, in the words of the tabs: "Library › Images", "Home".
+    private var trashPlace: String {
+        let here = title(for: section)
+        switch section.tab {
+        case .home: return section == .search ? "Search" : "Home"
+        case .library: return section == .library ? "Library" : "Library › \(here)"
+        case .tidy: return section == .cleanUp ? "Tidy" : "Tidy › \(here)"
+        default: return section.tab.rawValue
+        }
+    }
 
     func copyTextFromSelection() {
         let targets = selectedItems.filter { $0.category == .images || $0.ext == "pdf" }
@@ -923,8 +964,8 @@ final class AppState {
     func biggerCards() { prefs.cardSize = min(320, prefs.cardSize + 24) }
     func smallerCards() { prefs.cardSize = max(96, prefs.cardSize - 24) }
 
-    func showToast(_ message: String, undo: (() -> Void)? = nil) {
-        toast = Toast(message: message, undo: undo)
+    func showToast(_ message: String, undo: (() -> Void)? = nil, seeRemoved: Bool = false) {
+        toast = Toast(message: message, undo: undo, seeRemoved: seeRemoved)
         toastTask?.cancel()
         toastTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: undo == nil ? 2_600_000_000 : 6_000_000_000)
@@ -962,6 +1003,7 @@ final class AppState {
         case .duplicates: return "Duplicates"
         case .cleanUp: return "Clean Up"
         case .cleanUpReview(let k): return k.title
+        case .recentlyRemoved: return "Recently removed"
         case .smartFolder(let id): return folder(id)?.name ?? "Smart folder"
         case .folder(let p): return FileManager.default.displayName(atPath: p)
         case .search: return "Results"
@@ -981,6 +1023,7 @@ final class AppState {
         case .downloadedFrom: return "arrow.down.circle"
         case .duplicates: return "square.on.square"
         case .cleanUp, .cleanUpReview: return "sparkles"
+        case .recentlyRemoved: return "arrow.uturn.backward"
         case .smartFolder: return "folder.badge.gearshape"
         case .folder: return "folder"
         case .search: return "magnifyingglass"

@@ -158,7 +158,8 @@ enum DuplicateFinder {
         return clusters.values.filter { $0.count > 1 }.map { idxs in
             let members = idxs.map { images[$0] }
             return DuplicateGroup(id: "l-" + members.map(\.id).sorted().joined().hashValue.description,
-                                  kind: .lookAlike, items: members, keepID: preferredKeep(members, lookAlike: true))
+                                  kind: .lookAlike, items: members, keepID: preferredKeep(members, lookAlike: true),
+                                  included: false)   // Your call: look-alikes start unticked
         }
     }
 
@@ -181,8 +182,13 @@ final class DuplicatesModel {
     var lastScan: Date?
     var includeLookAlikes = true
 
+    /// Which kind the Duplicates screen opens on (set by the Tidy card that was clicked).
+    var focus: DuplicateGroup.Kind?
     var totalReclaimable: Int64 { groups.filter(\.included).reduce(0) { $0 + $1.reclaimable } }
     var duplicateFileCount: Int { groups.reduce(0) { $0 + $1.items.count - 1 } }
+    /// Everything that could be freed for one kind, ticked or not (what the Tidy card shows).
+    func reclaimable(_ kind: DuplicateGroup.Kind) -> Int64 { groups.filter { $0.kind == kind }.reduce(0) { $0 + $1.reclaimable } }
+    func extraCount(_ kind: DuplicateGroup.Kind) -> Int { groups.filter { $0.kind == kind }.reduce(0) { $0 + $1.items.count - 1 } }
     var selectedExtras: [FileItem] { groups.filter(\.included).flatMap(\.extras) }
 
     func scan() {
@@ -190,7 +196,7 @@ final class DuplicatesModel {
         isScanning = true
         progress = 0
         phase = "Comparing file fingerprints…"
-        let items = FileIndex.shared.items
+        let items = FileIndex.shared.tidyItems
         let lookAlikes = includeLookAlikes
         let threshold = Float(Preferences.shared.lookAlikeThreshold)
         skippedCloud = items.filter(\.isCloudOnly).count

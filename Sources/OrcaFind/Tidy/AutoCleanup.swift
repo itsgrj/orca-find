@@ -38,6 +38,8 @@ final class AutoCleanup {
         let index = FileIndex.shared
         guard index.isReady else { return }
         let now = Date()
+        // Deleted captures past their 30 days are erased, even if Orca stays open for weeks.
+        RemovalLog.shared.purge()
 
         if prefs.autoTrashInstallers {
             let cutoff = now.addingTimeInterval(-Double(prefs.autoInstallerDays) * 86_400)
@@ -46,7 +48,7 @@ final class AutoCleanup {
                     && ($0.added ?? $0.activityDate) < cutoff
             }
             if !targets.isEmpty {
-                let r = Trash.move(targets)
+                let r = Trash.move(targets, automatic: true, reason: "Old installer")
                 if r.count > 0 {
                     prefs.log("Moved \(Fmt.plural(r.count, "old installer")) to the Trash (\(Fmt.size(r.bytes))).")
                 }
@@ -62,6 +64,7 @@ final class AutoCleanup {
                     && ($0.created ?? $0.activityDate) < cutoff
             }
             var moved = 0
+            var filed: [(original: URL, filed: URL, size: Int64)] = []
             let fm = FileManager.default
             for item in targets {
                 let month = AutoCleanup.monthFolderName(for: item.created ?? item.activityDate)
@@ -76,10 +79,12 @@ final class AutoCleanup {
                     }
                     try fm.moveItem(at: item.url, to: target)
                     moved += 1
+                    filed.append((item.url, target, item.size))
                 } catch {
                     NSLog("OrcaFind: could not file screenshot \(item.path): \(error)")
                 }
             }
+            RemovalLog.shared.recordFiled(filed)
             if moved > 0 {
                 prefs.log("Filed \(Fmt.plural(moved, "screenshot")) into monthly folders.")
             }

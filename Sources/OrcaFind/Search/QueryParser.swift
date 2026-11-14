@@ -115,7 +115,7 @@ enum QueryParser {
         (["webps", "webp"], TypeWord(exts: ["webp"], label: "WebP")),
         (["raw photos", "raws", "dng"], TypeWord(exts: ["dng", "cr2", "cr3", "nef", "arw", "raf", "orf", "rw2", "raw"], label: "RAW photos")),
         (["psds", "psd", "photoshop files"], TypeWord(exts: ["psd"], label: "PSDs")),
-        (["images", "image", "photos", "photo", "pictures", "picture", "pics", "pic", "pix", "imgs", "img", "graphics", "wallpapers", "wallpaper", "selfies", "memes"],
+        (["images", "image", "photos", "photo", "pictures", "picture", "pics", "pic", "pix", "imgs", "img", "graphics", "wallpapers", "wallpaper", "selfies", "selfie", "memes", "meme"],
          TypeWord(categories: [.images], label: "Images")),
         (["movs", "mov"], TypeWord(exts: ["mov"], label: "MOVs")),
         (["mp4s", "mp4"], TypeWord(exts: ["mp4", "m4v"], label: "MP4s")),
@@ -152,7 +152,9 @@ enum QueryParser {
         // conversational filler, so "hey, there's that photo I think I saved" doesn't require these words
         "hey", "hi", "hello", "ok", "okay", "um", "uh", "hmm", "there's", "theres", "remember", "think", "maybe",
         "somewhere", "pls", "thanks", "thank", "i'm", "im", "i've", "ive", "few", "some", "edited", "opened", "used",
-        "back", "ago", "recently", "earlier", "lately", "got", "get"
+        "back", "ago", "recently", "earlier", "lately", "got", "get",
+        // telling the story of the file ("the photo I took", "we saw", "a while back")
+        "our", "we", "us", "took", "saw", "drew", "scanned", "while"
     ]
 
     private static let numberWords: [String: Double] = [
@@ -448,9 +450,15 @@ enum QueryParser {
             let comp = c.component(u)
             c.q.before = c.subtract(n, comp); c.dateLabel = "Older than \(Int(n)) \(c.unitWord(comp, n))"; return true
         }
-        c.each(.date, "\\bnot\\s+(?:opened|used|touched|modified|changed)\\s+(?:in|for)(?:\\s+(?:the\\s+)?(?:last|past))?\\s+\(N)\\s+\(TU)\\b") { g in
-            guard let n = c.number(g[1]), let u = g[2] else { return false }
+        // "not opened in 6 months", "I haven't opened in a year", "never touched in the past year",
+        // "haven't watched in months". Must run before "past year" / "last month", which mean the opposite.
+        c.each(.date, "\\b(?:not|never|haven['’]?t|hasn['’]?t|didn['’]?t|have\\s+not|has\\s+not|did\\s+not)\\s+(?:been\\s+)?(?:opened|used|touched|modified|changed|edited|watched|played|viewed|read|listened\\s+to|looked\\s+at)\\s+(?:(?:it|them)\\s+)?(?:in|for)(?:\\s+(?:over|more\\s+than))?(?:\\s+(?:the\\s+)?(?:last|past))?(?:\\s+\(N))?\\s+\(TU)\\b") { g in
+            guard let u = g[2] else { return false }
             let comp = c.component(u)
+            // No number: "the past year" is one; "in months" / "in years" is a vague few.
+            let plural = u.hasSuffix("s")
+            let vague: Double = comp == .month ? 3 : comp == .day ? 7 : 2
+            guard let n = g[1] == nil ? (plural ? vague : 1) : c.number(g[1]) else { return false }
             c.q.before = c.subtract(n, comp); c.dateLabel = "Untouched for \(Int(n)) \(c.unitWord(comp, n))"; return true
         }
         c.each(.date, "\\b(?:a\\s+)?(few|couple(?:\\s+of)?)\\s+\(TU)\\s+ago\\b") { g in
@@ -622,6 +630,9 @@ enum QueryParser {
 
     private static func parseTypes(_ c: Ctx) {
         for (words, type) in typeWords {
+            // A file can't be an app and also a screenshot / video / PDF, so with another kind already
+            // named, "app" is what's in it ("screenshots of a dark mode app") and stays a search word.
+            if type.categories == [.apps], c.q.hasTypeFilter || c.q.screenshots { continue }
             let alt = words.sorted { $0.count > $1.count }.map { NSRegularExpression.escapedPattern(for: $0) }.joined(separator: "|")
             c.each(.type, "\\b(\(alt))\\b") { _ in
                 c.q.categories.formUnion(type.categories)
@@ -644,6 +655,12 @@ enum QueryParser {
 
     /// "the PDF where the cover page is blue", "blue cover", "mostly green photos"
     private static func parseColours(_ c: Ctx) {
+        // "a dark mode app", "light theme": the screen is mostly black / white.
+        c.each(.colour, "\\b(?:(dark|light)\\s+(?:mode|theme|ui)|night\\s+mode)\\b") { g in
+            let name = g[1] == "light" ? "white" : "black"
+            if !c.q.coverColours.contains(name) { c.q.coverColours.append(name) }
+            return true
+        }
         let text = (c.work as String).lowercased()
         let context = regex("\\b(cover|colou?r(?:ed)?|background|mostly)\\b")
         guard context.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) != nil else { return }
@@ -668,10 +685,12 @@ enum QueryParser {
         let snapshot = c.work as String
         let matches = re.matches(in: snapshot, range: NSRange(location: 0, length: c.work.length))
         let words = matches.map { (snapshot as NSString).substring(with: $0.range).lowercased() }
+        // "the document about my car insurance": what it's about is found as words, not as a picture of a car.
+        let topicStart = topicClause(c.q.raw)?.location ?? Int.max
         var i = 0
         while i < words.count {
             let w = words[i]
-            if stopwords.contains(w) { i += 1; continue }
+            if stopwords.contains(w) || matches[i].range.location >= topicStart { i += 1; continue }
             // two-word labels first: "blue sky", "night sky"
             if i + 1 < words.count {
                 let pair = w + "_" + SearchEngine.stem(words[i + 1])
@@ -695,6 +714,12 @@ enum QueryParser {
     }
 
     private static func parseTerms(_ c: Ctx) {
+        // "the deck I was working on": how the person used it, not words inside the file.
+        // ("working draft" on its own is still searched.)
+        let story = regex("\\b(?:(?:was|were|been|am|are|i'?m|i’m)\\s+)?(?:working|worked)\\s+on\\b")
+        for m in story.matches(in: c.work as String, range: NSRange(location: 0, length: c.work.length)) {
+            c.work.replaceCharacters(in: m.range, with: String(repeating: " ", count: m.range.length))
+        }
         let re = regex("[\\p{L}\\p{N}][\\p{L}\\p{N}._'’&+-]*")
         let snapshot = c.work as String
         for m in re.matches(in: snapshot, range: NSRange(location: 0, length: c.work.length)) {
@@ -783,9 +808,18 @@ enum QueryParser {
         var out = q
         let vocab = VisualAnalyzer.vocabulary
         var guesses: [LookTerm] = []
+        // Words the rules already explained or set aside: the topic after "about" ("the document about my car
+        // insurance") is found as words, and a camera, app or place ("taken with my Canon") isn't in the picture.
+        let ns = q.raw as NSString
+        let wordsIn: (NSRange) -> [String] = { r in ns.substring(with: r).lowercased().split { !$0.isLetter }.map { SearchEngine.stem(String($0)) } }
+        let topicWords = Set(topicClause(q.raw).map(wordsIn) ?? [])
+        let explained = Set(q.chips.filter { ![.looks, .text].contains($0.kind) }.flatMap(\.ranges)
+            .filter { $0.location + $0.length <= ns.length }.flatMap(wordsIn))
+        let setAside = topicWords.union(explained)
         for g in r.looks {
             let phrase = g.phrase.lowercased().trimmingCharacters(in: .whitespaces)
             guard !phrase.isEmpty, !dismissed.contains("Looks like: " + phrase) else { continue }
+            if phrase.split(separator: " ").allSatisfy({ setAside.contains(SearchEngine.stem(String($0))) }) { continue }
             // Skip what the rules already cover: colours/covers ("blue cover") and file kinds ("screenshots").
             let words = phrase.split(separator: " ").map(String.init)
             let notThings: Set<String> = ["cover", "page", "front", "background", "colour", "color", "coloured", "colored",
@@ -818,14 +852,22 @@ enum QueryParser {
             out.scene = nil
         }
         if out.coverColours.isEmpty {
-            let colours = r.looks.flatMap { colourWordsIn($0.phrase.lowercased()) }
+            // Only phrases about the whole picture or page ("blue cover", "green background"). In "red car"
+            // the colour belongs to the car, which may be a small part of the photo: that's a look, not a filter.
+            let wholeWords: Set<String> = ["cover", "page", "front", "background", "colour", "color", "coloured", "colored", "mostly", "all"]
+            let colours = r.looks.map { $0.phrase.lowercased() }.filter { p in
+                let words = p.split { !$0.isLetter }.map(String.init)
+                return words.contains(where: wholeWords.contains) && words.allSatisfy { wholeWords.contains($0) || !colourWordsIn($0).isEmpty }
+            }.flatMap(colourWordsIn)
             if !colours.isEmpty && (out.extensions.contains("pdf") || out.categories.contains(.documents) || out.categories.contains(.images)) {
                 out.coverColours = Array(Set(colours)).sorted()
             }
         }
         // Vague time the rules didn't catch ("the other day", "recently").
         var dateGuess: String?
-        let timeHint = regex("\\b(ago|day|days|week|weeks|weekend|month|months|year|years|yesterday|recent|recently|lately|earlier|before|while|back|last|time|morning|evening|night|tonight)\\b")
+        // Only time said relative to now ("a while back", "last summer", "the other day"); a bare "year" or
+        // "day" is often part of a name ("new year's eve", "valentine's day") and isn't a when.
+        let timeHint = regex("\\b(ago|yesterday|recent|recently|lately|earlier|back|last|past|previous|other\\s+day|this\\s+(?:morning|afternoon|evening|week|weekend|month|year|summer|winter|spring)|tonight|few\\s+(?:days|weeks|months))\\b")
         let hasTime = timeHint.firstMatch(in: q.raw.lowercased(), range: NSRange(location: 0, length: (q.raw as NSString).length)) != nil
         if out.after == nil && out.before == nil && r.withinDays > 0 && hasTime && !dismissed.contains("date") {
             out.after = Calendar.current.date(byAdding: .day, value: -r.withinDays, to: now)
@@ -848,6 +890,14 @@ enum QueryParser {
         return out
     }
 
+    /// Where "about …" / "regarding …" says what a file is about, up to the next comma or full stop.
+    static func topicClause(_ text: String) -> NSRange? {
+        // Not an amount: "about 2 weeks ago", "about a month ago", "about 5 MB".
+        let amount = "(?!\\d|(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|a\\s+few|a\\s+couple)\\s+(?:of\\s+)?(?:minutes?|hours?|days?|weeks?|months?|years?|kb|mb|gb|megs?|gigs?)\\b)"
+        let m = regex("\\b(?:about|regarding|on\\s+the\\s+topic\\s+of)\\s+\(amount)([^,.;]+)").firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length))
+        return m?.range(at: 1)
+    }
+
     private static func colourWordsIn(_ s: String) -> [String] {
         s.split { !$0.isLetter }.map(String.init).compactMap { w in
             switch w {
@@ -860,10 +910,24 @@ enum QueryParser {
     }
 
     /// Removes the words that produced a chip from the query text.
+    /// Little words left hanging just before what was removed ("pdfs from last week" → "pdfs", not "pdfs from").
+    private static let danglers: Set<String> = ["from", "in", "on", "at", "of", "since", "during", "with", "by", "via", "a", "an", "the", "my", "that", "taken", "shot"]
+
     static func removing(_ chip: QueryChip, from text: String) -> String {
         let ns = NSMutableString(string: text)
         for r in chip.ranges.sorted(by: { $0.location > $1.location }) where r.location + r.length <= ns.length {
-            ns.replaceCharacters(in: r, with: "")
+            var start = r.location
+            // Only when the removed words were the end of their phrase (nothing but space or a comma follows).
+            let after = ns.substring(from: r.location + r.length).trimmingCharacters(in: .whitespaces)
+            let endsPhrase = after.isEmpty || after.hasPrefix(",")
+            if endsPhrase {
+                let word = regex("([\\p{L}]+)\\s+$")
+                while start > 0, let m = word.firstMatch(in: ns as String, range: NSRange(location: 0, length: start)),
+                      danglers.contains(ns.substring(with: m.range(at: 1)).lowercased()) {
+                    start = m.range.location
+                }
+            }
+            ns.replaceCharacters(in: NSRange(location: start, length: r.location + r.length - start), with: "")
         }
         return (ns as String).split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     }

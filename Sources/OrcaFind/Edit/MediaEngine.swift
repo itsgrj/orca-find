@@ -799,8 +799,8 @@ enum MediaEngine {
         case needsApp, denied, nothing
         var errorDescription: String? {
             switch self {
-            case .needsApp: return "Transcribing needs the Orca Find app (not the command-line build)."
-            case .denied: return "Orca Find isn’t allowed to use Speech Recognition. Turn it on in System Settings → Privacy & Security."
+            case .needsApp: return "Transcribing needs the OrcaFind app (not the command-line build)."
+            case .denied: return "OrcaFind isn’t allowed to use Speech Recognition. Turn it on in System Settings → Privacy & Security."
             case .nothing: return "No speech found in this file."
             }
         }

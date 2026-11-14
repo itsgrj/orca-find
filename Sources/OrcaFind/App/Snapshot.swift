@@ -22,7 +22,7 @@ enum Snapshot {
     static func render<V: View>(_ view: V, size: NSSize, name: String, window: NSWindow) async {
         let args = CommandLine.arguments
         guard let i = args.firstIndex(of: "--snapshot") else { return }
-        let host = NSHostingView(rootView: view.environment(AppState.shared).frame(width: size.width, height: size.height))
+        let host = NSHostingView(rootView: view.environment(AppState.shared).environment(CaptureLibrary.shared).frame(width: size.width, height: size.height))
         host.frame = NSRect(origin: .zero, size: size)
         host.appearance = NSAppearance(named: .aqua)
         window.setContentSize(size)
@@ -48,6 +48,7 @@ enum Snapshot {
             }
         }
         if args.contains("--captures-only") { runCaptures(outDir); return }
+        if args.contains("--design") { DesignSnapshots.run(outDir); return }
         let state = AppState.shared
         let prefs = Preferences.shared
         let wasOnboarded = prefs.onboarded
@@ -84,7 +85,7 @@ enum Snapshot {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             for shot in shots {
                 shot.setup()
-                let host = NSHostingView(rootView: MainView().environment(state).frame(width: size.width, height: size.height))
+                let host = NSHostingView(rootView: MainView().environment(state).environment(CaptureLibrary.shared).frame(width: size.width, height: size.height))
                 host.frame = NSRect(origin: .zero, size: size)
                 host.appearance = NSAppearance(named: shot.dark ? .darkAqua : .aqua)
                 window.setContentSize(size)

@@ -45,6 +45,9 @@ struct Capture: Identifiable, Hashable, Codable, Sendable {
     /// over the whole recording, "model" = the downloaded English model. Never shown in the UI.
     var noteSource: String?
 
+    /// Shared from Finder: where the file is (Orca remembers it, it doesn't keep a copy).
+    var filePath: String?
+
     var tagList: [String] { tags ?? [] }
     var clipURL: URL { CaptureStore.folder.appendingPathComponent("\(id).mov") }
     var hasClip: Bool { (clipSeconds ?? 0) > 0 && FileManager.default.fileExists(atPath: clipURL.path) }

@@ -29,11 +29,30 @@ final class CaptureLibrary {
         reload()
     }
 
-    func delete(_ c: Capture) {
+    /// Deleting keeps the capture in Recently removed for 30 days (no "are you sure?"; the toast has Undo).
+    /// `keep: false` erases it at once: only for the Undo right after a capture is taken.
+    func delete(_ c: Capture, keep: Bool = true) {
         if let r = c.reminderID { RemindersBridge.remove(r) }
+        let kept = keep ? RemovalLog.shared.removeCapture(c) : nil
         CaptureStore.shared.delete(id: c.id)
         CaptureThumbs.cache.removeAllObjects()
         reload()
+        if let kept {
+            AppState.shared.showToast("Capture deleted · kept 30 days", undo: {
+                _ = try? RemovalLog.shared.putBack(kept)
+            }, seeRemoved: true)
+        }
+    }
+
+    /// Delete Clip, Keep Picture: the clip is kept 30 days the same way.
+    func deleteClip(_ c: Capture) {
+        let kept = RemovalLog.shared.removeClip(of: c)
+        var c = c; c.clipSeconds = nil; update(c)
+        if let kept {
+            AppState.shared.showToast("Clip deleted · kept 30 days", undo: {
+                _ = try? RemovalLog.shared.putBack(kept)
+            }, seeRemoved: true)
+        }
     }
 
     var tagNames: [String] { tags.map(\.name) }
@@ -75,6 +94,8 @@ final class CaptureSession {
     /// The page details have arrived (or there are none to wait for).
     var pageDone = false
     var pastedLinks: [String] = []
+    /// Handed over from another app's Share menu rather than grabbed from the screen.
+    var shared: SharedItem?
     var image: CGImage
     var pointSize: CGSize
     let context: CaptureContext
@@ -201,6 +222,67 @@ final class CaptureController {
         s.clipChoice = !s.keepsClip
     }
 
+    // MARK: 1b · From the Share menu
+
+    /// Share › Orca in any app: the same strip, under that window's Share button, already listening.
+    func startShared(_ item: SharedItem) {
+        guard !isBusy else { return }
+        hideSaved()
+        let context = CaptureContext.snapshot()
+        Task { @MainActor in
+            // Let the Share menu fade out before taking the picture of the page.
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            let win = ShareImages.frontWindow(pid: context.pid)
+            var item = item
+            var image: CGImage?
+            var size = CGSize.zero
+            switch item.kind {
+            case .page:
+                // Browsers don't always hand over the page's title; ask them, as captures do.
+                if item.title == nil, let id = context.bundleID, CaptureContext.browsers[id] != nil,
+                   let page = await CaptureContext.fetchPage(bundleID: id) {
+                    item.title = page.title.flatMap { CaptureContext.cleanTitle($0) ?? $0 }
+                }
+                if !ScreenGrab.hasPermission {
+                    // Same as the capture hotkey: ask, and say where. This share still saves, with a card for a picture.
+                    ScreenGrab.requestPermission()
+                    AppState.shared.showToast("To keep a picture of shared pages, allow Orca under Screen & System Audio Recording")
+                }
+                if let win { image = await ShareImages.window(win.id, frame: win.frame); size = win.frame.size }
+                ShareImages.log("page from \(context.appName ?? "?"): window \(win.map { "\(Int($0.frame.width))×\(Int($0.frame.height))" } ?? "none"), picture \(image == nil ? "card" : "window")")
+                if image == nil {
+                    image = ShareImages.card(item.headline, footer: item.host, paper: .white)
+                    size = CGSize(width: 900, height: 600)
+                }
+            case .photo:
+                image = ShareImages.sharedPicture()
+            case .file:
+                if let path = item.path { image = await ShareImages.thumbnail(path: path) }
+            case .text:
+                image = ShareImages.card(SharedItem.excerpt(item.text ?? "", 400), footer: context.appName)
+            }
+            guard let image else {
+                AppState.shared.showToast("Orca couldn’t read what was shared")
+                return
+            }
+            if size == .zero { size = CGSize(width: image.width, height: image.height) }
+            let s = CaptureSession(image: image, pointSize: size, context: context)
+            s.shared = item
+            s.pageURL = item.kind == .page ? item.url : nil
+            s.pageTitle = item.kind == .page ? item.title : item.headline
+            s.pageDone = true
+            self.session = s
+            // Under the top-right of the window (where Share buttons live); top-right of the screen if there's no window.
+            let screen = win.flatMap { w in NSScreen.screens.first { $0.frame.contains(NSPoint(x: w.frame.midX, y: w.frame.midY)) } }
+                ?? NSScreen.main ?? NSScreen.screens[0]
+            let top = win?.frame ?? screen.visibleFrame
+            let width: CGFloat = 560
+            let anchor = NSRect(x: top.maxX - width - 12, y: top.maxY - 40, width: width, height: 1)
+            self.showStrip(for: anchor, on: screen, spotlight: false)
+            await self.beginRecording(s)
+        }
+    }
+
     // MARK: 2 · Talk (or type)
 
     private func beginRecording(_ s: CaptureSession) async {
@@ -287,10 +369,15 @@ final class CaptureController {
         let clip = s.clip
         let keepClip = s.keepsClip
         if keepClip { c.clipSeconds = max(0.5, min(ClipRecorder.maxSeconds, s.recorder.elapsed)) }
+        let sharedText = s.shared?.kind == .text ? s.shared?.text : nil
+        if let sh = s.shared {
+            if sh.kind == .file { c.filePath = sh.path }
+            if let t = sharedText { c.ocr = t }
+        }
 
         let image = s.image
         let pageDone = s.pageDone
-        let fromBrowser = s.context.isBrowser
+        let fromBrowser = s.context.isBrowser && s.shared == nil
         let pending = pageTask
         _ = CaptureStore.writePNG(image, to: c.imageURL)
         CaptureStore.shared.save(c)
@@ -337,7 +424,9 @@ final class CaptureController {
                 if let t = s.pageTitle, let clean = CaptureContext.cleanTitle(t) { c.title = clean }
             }
             if fromBrowser { CaptureController.offerPageAccess() }
-            let text = await Task.detached(priority: .utility) { TextExtractor.recognize(image) }.value
+            // Shared text is already the words themselves; everything else is read from its picture.
+            var text = sharedText ?? ""
+            if sharedText == nil { text = await Task.detached(priority: .utility) { TextExtractor.recognize(image) }.value }
             c.ocr = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if s.pageTitle == nil && CaptureContext.cleanTitle(s.context.windowTitle) == nil && c.note.isEmpty {
                 c.title = CaptureContext.title(page: nil, window: nil, note: "", ocr: c.ocr, app: c.sourceApp)
@@ -405,7 +494,7 @@ final class CaptureController {
 
     // MARK: Strip window (V2 A — under the grab)
 
-    private func showStrip(for rect: NSRect, on screen: NSScreen) {
+    private func showStrip(for rect: NSRect, on screen: NSScreen, spotlight: Bool = true) {
         guard let s = session else { return }
         let vis = screen.visibleFrame
         let width = min(max(rect.width, 460), 640)
@@ -430,7 +519,7 @@ final class CaptureController {
         p.hasShadow = true
         p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        let host = NSHostingView(rootView: CaptureStripView(session: s) { [weak self] h in self?.resizeStrip(h) })
+        let host = NSHostingView(rootView: CaptureStripView(session: s) { [weak self] h in self?.resizeStrip(h) }.focusEffectDisabled())
         // We size the strip ourselves (resizeStrip). Left on, NSHostingView pins the panel's minimum
         // height to the text laid out at zero width (one letter per line, ~650pt), so the strip
         // balloons upward and covers the very thing being grabbed.
@@ -444,6 +533,8 @@ final class CaptureController {
 
         // Everything but the grab goes dark, with a purple edge around it, so it's clear what's being talked about.
         // It sits just under the strip and lets clicks through; the picture was already taken, so it isn't in it.
+        // (Nothing was grabbed when it came from the Share menu: the card on the strip shows what's being saved.)
+        if spotlight {
         let o = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         o.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue - 1)
         o.isOpaque = false
@@ -461,6 +552,7 @@ final class CaptureController {
         }
         p.orderFrontRegardless()
         outline = o
+        }
 
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             let code = e.keyCode
@@ -511,7 +603,7 @@ final class CaptureController {
         p.hasShadow = true
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         let view = SavedCardView(captureID: c.id, undo: { [weak self] in
-            if let c = CaptureLibrary.shared.capture(c.id) { CaptureLibrary.shared.delete(c) }
+            if let c = CaptureLibrary.shared.capture(c.id) { CaptureLibrary.shared.delete(c, keep: false) }
             self?.hideSaved()
         }, open: { [weak self] in
             self?.hideSaved()
@@ -521,6 +613,7 @@ final class CaptureController {
             if inside { self?.savedTask?.cancel() } else { self?.scheduleSavedHide(after: 1.5) }
         })
         .environment(CaptureLibrary.shared)
+        .focusEffectDisabled()
         p.contentView = NSHostingView(rootView: view)
         p.orderFrontRegardless()
         savedPanel = p
@@ -553,8 +646,22 @@ struct CaptureStripView: View {
     @State private var textHeight: CGFloat = 20
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let item = session.shared { SharedItemCard(item: item, image: session.image, app: session.context.appName) }
+            strip
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .background(GeometryReader { g in Color.clear.preference(key: StripHeight.self, value: g.size.height) })
+        .onPreferenceChange(StripHeight.self) { onHeight($0) }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onChange(of: session.focusToken) { _, _ in
+            DispatchQueue.main.async { typingFocused = true }
+        }
+    }
+
+    private var strip: some View {
         let r = session.recorder
-        VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 switch session.mode {
                 case .recording:
@@ -637,16 +744,10 @@ struct CaptureStripView: View {
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
-        .fixedSize(horizontal: false, vertical: true)
-        .background(GeometryReader { g in Color.clear.preference(key: StripHeight.self, value: g.size.height) })
-        .onPreferenceChange(StripHeight.self) { onHeight($0) }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(hex: 0x1A1A1A).opacity(0.96)))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.08)))
         .animation(.easeOut(duration: 0.2), value: session.keepsClip)
-        .onChange(of: session.focusToken) { _, _ in
-            DispatchQueue.main.async { typingFocused = true }
-        }
     }
 
     private func hints(compact: Bool) -> some View {
@@ -673,6 +774,28 @@ struct CaptureStripView: View {
     }
 
     static func clock(_ t: TimeInterval) -> String { String(format: "%d:%02d", Int(t) / 60, Int(t) % 60) }
+}
+
+/// Sits on top of the strip when something came from the Share menu, so it's clear what's being saved.
+struct SharedItemCard: View {
+    let item: SharedItem
+    let image: CGImage
+    let app: String?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(decorative: image, scale: 1).resizable().interpolation(.high).scaledToFill()
+                .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.headline).font(.system(size: 12, weight: .medium)).foregroundStyle(.white).lineLimit(1)
+                Text(item.detail(from: app)).font(DS.caption).foregroundStyle(DS.onDark2).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 10).padding(.trailing, 14).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(hex: 0x1A1A1A).opacity(0.96)))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.white.opacity(0.08)))
+    }
 }
 
 private struct StripHeight: PreferenceKey {

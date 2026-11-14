@@ -285,18 +285,26 @@ struct DarkPill<Content: View>: View {
 struct ToastView: View {
     let toast: Toast
     let dismiss: () -> Void
+    var seeRemoved: (() -> Void)? = nil
     var body: some View {
         DarkPill {
             Text(toast.message).font(DS.body)
             if let undo = toast.undo {
-                Button { undo(); dismiss() } label: {
-                    Text("Undo").font(DS.bodySM).padding(.horizontal, 10).padding(.vertical, 4)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.15)))
-                }
-                .buttonStyle(.plain)
+                pill("Undo") { undo(); dismiss() }
                 Kbd("⌘Z", dark: true)
             }
+            if toast.seeRemoved, let seeRemoved {
+                pill("See removed") { seeRemoved(); dismiss() }
+            }
         }
+    }
+
+    private func pill(_ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label).font(DS.bodySM).padding(.horizontal, 10).padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.15)))
+        }
+        .buttonStyle(.plain).handCursor()
     }
 }
 

@@ -94,6 +94,24 @@ extension Snapshot {
                 await shot(CaptureStripView(session: s).padding(20).background(Color(hex: 0xDADDE2)), "24d-strip-long", NSSize(width: 640, height: 330))
                 s.mode = .typing; s.typed = "pricing thread for the newsletter"
                 await shot(CaptureStripView(session: s).padding(20).background(Color(hex: 0xDADDE2)), "25-strip-typing", NSSize(width: 640, height: 178))
+                // Share › Orca: the same strip with "what you're saving" on top, one per kind of thing.
+                let shares: [(SharedItem, String?, CGImage?)] = [
+                    (SharedItem(kind: .page, url: "https://x.com/priyabuilds/status/1855012", title: "Priya Shah on X: “We raised prices 40%…”"), "Safari", img),
+                    (SharedItem(kind: .photo, title: "IMG_4821"), "Photos", img),
+                    (SharedItem(kind: .file, path: "/Users/someone/Documents/Q3 pricing deck.pdf"), "Finder", img),
+                    (SharedItem(kind: .text, text: "The best pricing pages answer one question: what happens when I outgrow this plan?"), "Notes",
+                     ShareImages.card("The best pricing pages answer one question: what happens when I outgrow this plan?", footer: "Notes")),
+                ]
+                for (i, (item, app, picture)) in shares.enumerated() {
+                    var ctx = CaptureContext(); ctx.appName = app
+                    let ss = CaptureSession(image: picture ?? img, pointSize: CGSize(width: 900, height: 600), context: ctx)
+                    ss.shared = item
+                    ss.pageURL = item.kind == .page ? item.url : nil
+                    ss.recorder.transcript = i == 0 ? "Pricing thread for Friday’s newsletter, the forty percent bit is the hook" : ""
+                    ss.recorder.elapsed = 4
+                    ss.recorder.levels = (0..<28).map { j in j < 14 ? Float.random(in: 0.1...0.9) : 0 }
+                    await shot(CaptureStripView(session: ss).padding(20).background(Color(hex: 0xDADDE2)), "25s\(i)-strip-shared-\(item.kind.rawValue)", NSSize(width: 600, height: 250))
+                }
                 await shot(SavedCardView(captureID: first.id, undo: {}, open: {}, hover: { _ in }).padding(20).background(Color(hex: 0xDADDE2)),
                            "26-saved", NSSize(width: 420, height: 152))
             }

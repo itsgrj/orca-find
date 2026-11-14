@@ -1,0 +1,8 @@
+{
+  "version": "1.1.0",
+  "notes": [
+    { "symbol": "arrow.down.circle", "title": "Orca updates itself", "detail": "When a better version is ready, Orca tells you and updates in one click. It never interrupts you: updates go in when you quit." },
+    { "symbol": "menubar.rectangle", "title": "A clearer menu bar list", "detail": "On macOS 26 the menu bar list has the new Mac glass look and stays easy to read over any window." },
+    { "symbol": "checkmark.circle", "title": "No more blue outlines", "detail": "Clicking around Orca no longer draws blue rings around buttons and fields." }
+  ]
+}

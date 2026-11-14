@@ -5,9 +5,19 @@ struct HomeScreen: View {
 
     private var hasQuery: Bool { !state.searchText.trimmingCharacters(in: .whitespaces).isEmpty }
 
+    /// Bottom edge of the search card in the visible area (scrolls with the page on Home).
+    @State private var cardBottom: CGFloat = 400
+
     var body: some View {
         let q = hasQuery
+        // Home scrolls as one page: headline, card and rows move together, so nothing is clipped
+        // under a floating card. With a query the page stops scrolling and the results scroll on their own.
+        // The card stays one view in both states (keeps focus while typing and the morph between sizes).
+        GeometryReader { outer in
+        ScrollViewReader { proxy in
+        ScrollView {
         VStack(spacing: 0) {
+            Color.clear.frame(height: 0).id("home-top")
             // The hero line leaves quickly and drifts up; the card slides into its place.
             // (Removed views fade at their last frame while siblings animate — no height-0 clipping.)
             if !q {
@@ -27,28 +37,58 @@ struct HomeScreen: View {
                 .frame(maxWidth: q ? .infinity : 760)
                 .padding(.horizontal, q ? 24 : 32)
                 .padding(.top, q ? 16 : 0)
+                // Measured directly (not through a preference): a preference shared with the card's siblings
+                // could come back as its default, which left the results sized for Home's taller card.
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("homeScroll")).maxY } action: { bottom in
+                    cardMoved(to: bottom)
+                }
 
             // Outgoing content clears out fast; incoming content arrives just after,
             // so the two heavy layers never crossfade on top of each other.
             if q {
                 SearchResults()
+                    .frame(height: max(240, outer.size.height - cardBottom))
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .offset(y: 10)).animation(.easeOut(duration: 0.22).delay(0.1)),
                         removal: .opacity.animation(.easeOut(duration: 0.1))))
             } else {
-                GeometryReader { geo in
-                    ScrollView { PrivateAIReminder().padding(.horizontal, 32).padding(.top, 22); HomeExtras(width: geo.size.width - 64).padding(.horizontal, 32).padding(.top, 22).padding(.bottom, 30) }
+                VStack(spacing: 0) {
+                    PrivateAIReminder().padding(.horizontal, 32).padding(.top, 22)
+                    HomeExtras(width: outer.size.width - 64).padding(.horizontal, 32).padding(.top, 22).padding(.bottom, 30)
                 }
                 .transition(.asymmetric(
                     insertion: .opacity.combined(with: .offset(y: 10)).animation(.easeOut(duration: 0.24).delay(0.1)),
                     removal: .opacity.animation(.easeOut(duration: 0.1))))
             }
         }
+        .frame(minHeight: outer.size.height, alignment: .top)
         // Critically-damped spring: smooth ease-out for the card's move + widen, and
         // interruptible if you clear the field mid-flight.
         .animation(.smooth(duration: 0.34), value: q)
+        }
+        .scrollDisabled(q)
+        .coordinateSpace(name: "homeScroll")
+        .onChange(of: q) { _, nowQ in
+            // Searching from the top bar while scrolled down: bring the card (now holding the query) back.
+            if nowQ { proxy.scrollTo("home-top", anchor: .top); state.homeSearchScrolledAway = false }
+        }
+        .onAppear { state.homeSearchScrolledAway = false }
+        .onDisappear { state.homeSearchScrolledAway = false }
+        }
+        }
+    }
+
+    private func cardMoved(to bottom: CGFloat) {
+        cardBottom = bottom
+        // The card is fully under the top bar: hand search over to the top bar's compact field.
+        let away = !hasQuery && bottom < 6
+        if away != state.homeSearchScrolledAway {
+            withAnimation(.easeOut(duration: 0.18)) { state.homeSearchScrolledAway = away }
+        }
     }
 }
+
+
 
 // MARK: - Search card
 
@@ -323,6 +363,8 @@ struct SearchResults: View {
     @State private var snippets: [String: String] = [:]
     /// V7: captures that match, shown above the files.
     @State private var captureHits: [Capture] = []
+    /// Folders or files with almost the same name as what was typed (the "vanished folder" that wasn't deleted).
+    @State private var lookAlikes: [LookAlikeGroup] = []
 
     var body: some View {
         let items = state.visibleItems
@@ -331,12 +373,16 @@ struct SearchResults: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
+                        ForEach(lookAlikes) { g in LookAlikeBanner(group: g) }
                         if !captureHits.isEmpty {
                             CaptureSearchSection(hits: captureHits, terms: state.parsed.terms, width: geo.size.width)
                         }
                         if items.isEmpty && state.isRefreshing {
                             // Quiet placeholder: only says "Searching…" if it's actually slow.
                             SearchingLabel()
+                        } else if items.isEmpty && !lookAlikes.isEmpty && !state.isRefreshing {
+                            // The look-alike note above is the answer; "Nothing matches" under it would contradict it.
+                            EmptyView()
                         } else if !(items.isEmpty && !captureHits.isEmpty && !state.isRefreshing) {
                         HStack(alignment: .firstTextBaseline) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -388,6 +434,16 @@ struct SearchResults: View {
         .task(id: "\(state.parsed.raw)|\(state.parsed.terms)|\(library.version)") {
             let q = state.parsed
             captureHits = await Task.detached(priority: .userInitiated) { CaptureSearch.find(q) }.value
+        }
+        .task(id: state.searchText) {
+            // Only once typing pauses: the check lists the top two levels of the watched folders.
+            let q = state.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard q.count >= 3 else { lookAlikes = []; return }
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            if Task.isCancelled { return }
+            let roots = LookAlike.watchedRoots
+            let found = await Task.detached(priority: .utility) { LookAlike.find(matching: q, roots: roots) }.value
+            if !Task.isCancelled { withAnimation(.easeOut(duration: 0.18)) { lookAlikes = Array(found.prefix(2)) } }
         }
         .overlay(alignment: .bottom) { SelectionBar() }
     }

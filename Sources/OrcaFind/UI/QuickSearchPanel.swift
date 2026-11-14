@@ -110,6 +110,7 @@ final class QuickSearchController: NSObject, NSWindowDelegate {
         p.delegate = self
         let root = QuickSearchView(model: model)
             .environment(AppState.shared)
+            .focusEffectDisabled()
         let host = NSHostingView(rootView: root)
         host.frame = p.contentView?.bounds ?? .zero
         host.autoresizingMask = [.width, .height]
@@ -194,7 +195,7 @@ struct QuickSearchView: View {
                 }
                 .padding(.bottom, 10)
             }
-            Rectangle().fill(Color.black.opacity(0.08)).frame(height: 1)
+            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
 
             let shown = model.shown
             ScrollViewReader { proxy in
@@ -219,19 +220,22 @@ struct QuickSearchView: View {
                 .onChange(of: model.selected) { _, i in if shown.indices.contains(i) { proxy.scrollTo(shown[i].id) } }
             }
 
-            Rectangle().fill(Color.black.opacity(0.08)).frame(height: 1)
+            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
             HStack(spacing: 16) {
-                hint("↩", "Open"); hint("⌘↩", "Show in Orca Find"); hint("⌥↩", "Show in Finder")
+                hint("↩", "Open"); hint("⌘↩", "Show in OrcaFind"); hint("⌥↩", "Show in Finder")
                 Spacer()
                 hint("esc", "Close")
             }
             .padding(.horizontal, 16).frame(height: 36)
         }
         .frame(width: 700, height: 480)
-        .background(ZStack { VisualEffectBackground(); LinearGradient(colors: [Color.white.opacity(0.55), Color.white.opacity(0.75)], startPoint: .top, endPoint: .bottom) })
+        // Follows light and dark mode, like the rest of the app.
+        .background(ZStack {
+            VisualEffectBackground()
+            LinearGradient(colors: [Color.dyn(0xFFFFFF, 0x1B1F26).opacity(0.55), Color.dyn(0xFFFFFF, 0x1B1F26).opacity(0.75)], startPoint: .top, endPoint: .bottom)
+        })
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.white.opacity(0.75)))
-        .environment(\.colorScheme, .light)
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.dyn(0xFFFFFF, 0x3A404A).opacity(0.75)))
         .onChange(of: model.focusToken) { _, _ in DispatchQueue.main.async { focused = true } }
         .onAppear { focused = true }
     }
@@ -260,9 +264,9 @@ private struct QuickRow: View {
             if let s = item.source { Badge(s.name, tone: selected ? .neutral : .info) }
             if selected { Text("↩").font(.system(size: 12, weight: .medium)) }
         }
-        .foregroundStyle(selected ? Color.white : DS.text)
+        .foregroundStyle(selected ? DS.onBrand : DS.text)
         .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 10).fill(selected ? Color(hex: 0x303030) : .clear))
+        .background(RoundedRectangle(cornerRadius: 10).fill(selected ? DS.brand : .clear))
         .contentShape(Rectangle())
     }
 }

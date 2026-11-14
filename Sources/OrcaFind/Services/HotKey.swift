@@ -3,7 +3,7 @@ import Carbon
 
 /// System-wide shortcuts: ⇧⌘Space opens Quick Search, ⌥⇧Space starts a capture. Both work from any app.
 final class HotKeyCenter {
-    enum Slot: UInt32 { case quickSearch = 1, capture = 2 }
+    enum Slot: UInt32 { case quickSearch = 1, capture = 2, shelf = 3 }
 
     static let shared = HotKeyCenter()
     private var refs: [Slot: EventHotKeyRef] = [:]
