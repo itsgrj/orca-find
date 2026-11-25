@@ -8,6 +8,7 @@ import Observation
 ///   Understands your photos — Apple MobileCLIP-S2 (picture search by description)
 ///   Pro eraser             — LaMa (best-quality object removal; the quick eraser is built in)
 ///   Hears you clearly       — the speech model in SpeechModel (owned there; driven from here)
+///   Understands what you meant — the text model in LocalModel, only on Macs without Apple Intelligence
 /// The UI names what each one does, never the model.
 @MainActor
 @Observable
@@ -15,7 +16,7 @@ final class PrivateAI {
     static let shared = PrivateAI()
 
     enum Skill: String, CaseIterable, Identifiable {
-        case photos, eraser, voice
+        case photos, eraser, voice, understanding
         var id: String { rawValue }
 
         var title: String {
@@ -23,6 +24,7 @@ final class PrivateAI {
             case .photos: return "Understands your photos"
             case .eraser: return "Pro eraser"
             case .voice: return "Hears you clearly"
+            case .understanding: return "Understands what you meant"
             }
         }
         var pitch: String {
@@ -30,26 +32,35 @@ final class PrivateAI {
             case .photos: return "Search “our holiday by the sea” and find those photos, even when they’re called IMG_4122."
             case .eraser: return "Remove people, wires and clutter from photos in one stroke."
             case .voice: return "Voice notes and voice search that get names and numbers right."
+            case .understanding: return "Say “tag it design… no, animation” and it files it the way you meant."
             }
         }
         var symbol: String {
-            switch self { case .photos: return "sparkles"; case .eraser: return "eraser"; case .voice: return "mic" }
+            switch self { case .photos: return "sparkles"; case .eraser: return "eraser"; case .voice: return "mic"; case .understanding: return "text.bubble" }
         }
         @MainActor var bytes: Int64 {
-            switch self { case .photos: return 190_000_000; case .eraser: return 210_000_000; case .voice: return SpeechModel.downloadBytes }
+            switch self { case .photos: return PrivateAI.siglipHosted ? 386_000_000 : 190_000_000; case .eraser: return 210_000_000; case .voice: return SpeechModel.downloadBytes; case .understanding: return LocalModel.downloadBytes }
         }
         @MainActor var sizeLabel: String {
-            switch self { case .photos: return "190 MB"; case .eraser: return "200 MB"; case .voice: return SpeechModel.downloadLabel }
+            switch self { case .photos: return PrivateAI.siglipHosted ? "370 MB" : "190 MB"; case .eraser: return "200 MB"; case .voice: return SpeechModel.downloadLabel; case .understanding: return LocalModel.downloadLabel }
         }
         var unlockedToast: String {
             switch self {
             case .photos: return "Photo understanding added. Try “our holiday by the sea”."
             case .eraser: return "Pro eraser added. Open a photo and paint over anything."
             case .voice: return "Clearer voice added. Voice notes now get names and numbers right."
+            case .understanding: return "Added. Voice notes now get your corrections and names right."
             }
         }
         /// The voice model only runs on Apple silicon and only understands English.
-        @MainActor var isSupported: Bool { self == .voice ? SpeechModel.isSupported : true }
+        @MainActor var isSupported: Bool {
+            switch self {
+            case .voice: return SpeechModel.isSupported
+            // Where Apple Intelligence is on, it already does this; the download would only cost space.
+            case .understanding: return LocalModel.isSupported && (LocalModel.isNeeded || LocalModel.isInstalled)
+            default: return true
+            }
+        }
     }
 
     enum State: Equatable {
@@ -76,6 +87,15 @@ final class PrivateAI {
         if s == .voice {
             switch SpeechModel.shared.state {
             case .notInstalled: return queue.contains(.voice) ? .unlocking(0) : .locked
+            case .downloading(let f): return .unlocking(f)
+            case .preparing: return .preparing
+            case .ready: return .unlocked
+            case .failed(let m): return .failed(m)
+            }
+        }
+        if s == .understanding {
+            switch LocalModel.shared.state {
+            case .notInstalled: return queue.contains(.understanding) ? .unlocking(0) : .locked
             case .downloading(let f): return .unlocking(f)
             case .preparing: return .preparing
             case .ready: return .unlocked
@@ -138,6 +158,7 @@ final class PrivateAI {
     func cancel(_ s: Skill) {
         queue.removeAll { $0 == s }
         if s == .voice { SpeechModel.shared.cancel(); return }
+        if s == .understanding { LocalModel.shared.cancel(); return }
         if current == s { job?.cancel() }
         own[s] = Self.isInstalled(s) ? .unlocked : .locked
     }
@@ -146,14 +167,16 @@ final class PrivateAI {
         cancel(s)
         switch s {
         case .voice: SpeechModel.shared.remove()
+        case .understanding: LocalModel.shared.remove()
         case .photos:
-            for f in ["mobileclip_s2_image.mlmodelc", "mobileclip_s2_text.mlmodelc"] { try? FileManager.default.removeItem(at: Self.folder.appendingPathComponent(f)) }
+            for f in ["mobileclip_s2_image.mlmodelc", "mobileclip_s2_text.mlmodelc", "siglip2_image.mlmodelc", "siglip2_text.mlmodelc",
+                      "siglip2-vocab.json", "siglip2-merges.txt"] { try? FileManager.default.removeItem(at: Self.folder.appendingPathComponent(f)) }
             MobileCLIP.reload()
         case .eraser:
             try? FileManager.default.removeItem(at: Self.folder.appendingPathComponent("LaMa.mlmodelc"))
             Eraser.reload()
         }
-        if s != .voice { own[s] = Self.isInstalled(s) ? .unlocked : .locked }
+        if s != .voice && s != .understanding { own[s] = Self.isInstalled(s) ? .unlocked : .locked }
     }
 
     private var current: Skill?
@@ -168,6 +191,7 @@ final class PrivateAI {
             do {
                 switch s {
                 case .voice: try await self.runVoice()
+                case .understanding: try await self.runUnderstanding()
                 case .photos, .eraser: try await self.fetch(s)
                 }
                 self.finished(s, error: nil)
@@ -183,7 +207,7 @@ final class PrivateAI {
         job = nil
         if let error {
             if !(error is CancellationError) {
-                if s != .voice { own[s] = .failed("Couldn’t finish. Check the connection and try again.") }
+                if s != .voice && s != .understanding { own[s] = .failed("Couldn’t finish. Check the connection and try again.") }
                 NSLog("OrcaFind: private AI \(s.rawValue) failed: \(error)")
             }
         } else if isUnlocked(s) {
@@ -213,6 +237,21 @@ final class PrivateAI {
         }
     }
 
+    /// The text model has its own downloader too.
+    private func runUnderstanding() async throws {
+        let m = LocalModel.shared
+        m.download()
+        while true {
+            try await Task.sleep(nanoseconds: 400_000_000)
+            switch m.state {
+            case .ready: return
+            case .failed(let msg): throw EditError.message(msg)
+            case .notInstalled: throw CancellationError()
+            default: continue
+            }
+        }
+    }
+
     // MARK: Downloading Core ML packages
 
     private struct Package { let base: URL; let name: String; let compiled: String }
@@ -220,20 +259,42 @@ final class PrivateAI {
     /// Hosted on our own Hugging Face organisation (grj-models), pinned to the exact upload this
     /// version was tested with, so later changes to those repos never affect it.
     private static let photosRepo = URL(string: "https://huggingface.co/grj-models/mobileclip-s2-coreml/resolve/76a7536dfca8aa54420c40b0d3fa25126d7679fd")!
+
+    /// Google's SigLIP 2 (Apache 2.0, so OrcaFind can be sold with it), converted by Orca and hosted on grj-models,
+    /// pinned to the upload checked against `fingerprints`. MobileCLIP-S2 (research-only licence) is no longer
+    /// downloaded; Macs that already have it are moved over by `upgradePhotosIfNeeded`.
+    static let siglipHosted = true
+    private static let siglipRepo = URL(string: "https://huggingface.co/grj-models/siglip2-base-coreml/resolve/91893f6825a0264c646f0fbfd8e244c18f3eea4c")!
+    private static var photosUseSigLIP: Bool { siglipHosted }
+    /// Plain files fetched next to the packages (the tokenizer).
+    private static func extraFiles(_ s: Skill) -> [(base: URL, name: String)] {
+        s == .photos && photosUseSigLIP ? [(siglipRepo, "siglip2-vocab.json"), (siglipRepo, "siglip2-merges.txt")] : []
+    }
     private static let eraserRepo = URL(string: "https://huggingface.co/grj-models/lama-coreml/resolve/843e74d03f23115141a84db365289ae8f9034c2f")!
 
     private static func packages(_ s: Skill) -> [Package] {
         switch s {
         case .photos:
+            if photosUseSigLIP {
+                return ["image", "text"].map { Package(base: siglipRepo, name: "siglip2_\($0).mlpackage", compiled: "siglip2_\($0).mlmodelc") }
+            }
             return ["image", "text"].map { Package(base: photosRepo, name: "mobileclip_s2_\($0).mlpackage", compiled: "mobileclip_s2_\($0).mlmodelc") }
         case .eraser:
             return [Package(base: eraserRepo, name: "LaMa.mlpackage", compiled: "LaMa.mlmodelc")]
-        case .voice: return []
+        case .voice, .understanding: return []
         }
     }
 
     /// SHA-256 of every file we download; anything else is thrown away.
     private static let fingerprints: [String: String] = [
+        "siglip2-merges.txt": "b36e4f98c08d446d81bc01a7ba57e3f437f8e45d77acacf943f2339667ef0ca1",
+        "siglip2-vocab.json": "fcfd099eb3beb6706b085696427030aefe8b0ec60a8aa298700ecd473af93da0",
+        "siglip2_image.mlpackage/Data/com.apple.CoreML/model.mlmodel": "d74a906bf41d60b32e5e48a3cdc51cbda470dc7b46a9f91bb710a1d048c3e4e9",
+        "siglip2_image.mlpackage/Data/com.apple.CoreML/weights/weight.bin": "aa37c7a5bf4a0f11d7043490f9ff9f6bad72b523f3149a90b54406fa0ff60bf0",
+        "siglip2_image.mlpackage/Manifest.json": "e80dd11d00be73cf277c223bd5937cc5bb1ffe21178119079ab1be17b1d864f6",
+        "siglip2_text.mlpackage/Data/com.apple.CoreML/model.mlmodel": "f13225d6634b0460338b5d110e0d89cc0ac47ec000f0a5f55eb5fa8525ab8e8a",
+        "siglip2_text.mlpackage/Data/com.apple.CoreML/weights/weight.bin": "a4e33e3746de6bfe263bebe52b30045509985b89b546645c0dbf8ea33e5c6203",
+        "siglip2_text.mlpackage/Manifest.json": "444bb6aaabcacd4fdba74e85266c059b01720b82be84f996a3b80e6393916e07",
         "mobileclip_s2_image.mlpackage/Manifest.json": "6a1a3f93b8dca6c237dbb5dc7b19bb3c987042d14860288304986c099d8796b6",
         "mobileclip_s2_image.mlpackage/Data/com.apple.CoreML/model.mlmodel": "2aeb3359f6cde65e9f9248ec2a742e9939bd4bbf48c2f55fcd255b4504d96a1b",
         "mobileclip_s2_image.mlpackage/Data/com.apple.CoreML/weights/weight.bin": "6cbc7fb06b6072c1cae9c4496d67e0e6217adbf726dfeb82e44d4efe87c34c00",
@@ -256,8 +317,42 @@ final class PrivateAI {
 
     private static let packageFiles = ["Manifest.json", "Data/com.apple.CoreML/model.mlmodel", "Data/com.apple.CoreML/weights/weight.bin"]
 
-    private func fetch(_ s: Skill) async throws {
-        own[s] = .unlocking(0)
+    /// Macs that added "Understands your photos" before SigLIP 2 have MobileCLIP-S2, whose licence doesn't allow
+    /// selling OrcaFind. Swap it quietly: fetch SigLIP 2 in the background (photo search keeps working on the old
+    /// model meanwhile), then remove MobileCLIP and describe the pictures again. Tries at most every 6 hours.
+    func upgradePhotosIfNeeded() {
+        let oldImage = Self.folder.appendingPathComponent("mobileclip_s2_image.mlmodelc")
+        guard Self.siglipHosted, !upgradingPhotos, !MobileCLIP.siglipInstalled,
+              FileManager.default.fileExists(atPath: oldImage.path),
+              !queue.contains(.photos), current != .photos,
+              SpeechModel.freeBytes > Skill.photos.bytes * 2 else { return }
+        let d = UserDefaults.standard
+        if let last = d.object(forKey: Keys.photosUpgradeTried) as? Date, Date().timeIntervalSince(last) < 6 * 3600 { return }
+        d.set(Date(), forKey: Keys.photosUpgradeTried)
+        upgradingPhotos = true
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.upgradingPhotos = false }
+            do {
+                try await self.fetch(.photos, quiet: true)
+                guard MobileCLIP.siglipInstalled else { return }
+                for f in ["mobileclip_s2_image.mlmodelc", "mobileclip_s2_text.mlmodelc"] {
+                    try? FileManager.default.removeItem(at: Self.folder.appendingPathComponent(f))
+                }
+                MobileCLIP.reload()
+                MobileCLIP.warmUp()
+                if self.rescanAfterPhotos { FileIndex.shared.rescan() }   // the new model describes every picture once
+            } catch {
+                NSLog("OrcaFind: photo model upgrade failed: \(error)")
+            }
+        }
+    }
+    @ObservationIgnored private var upgradingPhotos = false
+
+    /// `quiet`: a background upgrade of something already unlocked, so the skill's state isn't touched.
+    private func fetch(_ s: Skill, quiet: Bool = false) async throws {
+        let st: (State) -> Void = { [weak self] new in if !quiet { self?.own[s] = new } }
+        st(.unlocking(0))
         let fm = FileManager.default
         let tmp = fm.temporaryDirectory.appendingPathComponent("orca-private-ai-\(UUID().uuidString)")
         defer { try? fm.removeItem(at: tmp) }
@@ -283,15 +378,24 @@ final class PrivateAI {
                 }
             }
         }
+        for (base, name) in Self.extraFiles(s) {
+            let dest = Self.folder.appendingPathComponent(name)
+            let part = tmp.appendingPathComponent(name)
+            _ = try await FileDownloader.fetch(base.appendingPathComponent(name), to: part) { _ in }
+            let digest = await Task.detached(priority: .utility) { Self.sha256(part) }.value
+            guard let want = Self.fingerprints[name], digest == want else { throw EditError.message("A downloaded file didn’t match. Try again.") }
+            try? fm.removeItem(at: dest)
+            try fm.moveItem(at: part, to: dest)
+        }
         try Task.checkCancellation()
-        own[s] = .preparing
+        st(.preparing)
         for p in Self.packages(s) {
             let compiled = try await MLModel.compileModel(at: tmp.appendingPathComponent(p.name))
             let target = Self.folder.appendingPathComponent(p.compiled)
             try? fm.removeItem(at: target)
             try fm.moveItem(at: compiled, to: target)
         }
-        own[s] = Self.isInstalled(s) ? .unlocked : .failed("The download didn’t finish. Try again.")
+        st(Self.isInstalled(s) ? .unlocked : .failed("The download didn’t finish. Try again."))
     }
 
     // MARK: Where the models live
@@ -308,6 +412,7 @@ final class PrivateAI {
         case .photos: return MobileCLIP.modelsInstalled
         case .eraser: return Eraser.isAvailable(.best)
         case .voice: return SpeechModel.isInstalled
+        case .understanding: return LocalModel.isInstalled
         }
     }
 
@@ -341,6 +446,7 @@ final class PrivateAI {
         static let lastRemind = "privateAI.lastRemind"
         static let noReminders = "privateAI.noReminders"
         static let everStarted = "privateAI.everStarted"
+        static let photosUpgradeTried = "privateAI.photosUpgradeTried"
     }
 
     var remindersOn: Bool {

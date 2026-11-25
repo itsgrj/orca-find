@@ -56,6 +56,12 @@ final class CaptureLibrary {
     }
 
     var tagNames: [String] { tags.map(\.name) }
+    /// Tags on two or more captures, or added by hand: the ones a note can bring in just by mentioning them.
+    /// A tag misheard once ("clawed", "says-whether") mustn't keep coming back.
+    var establishedTagNames: [String] {
+        let byHand = Set(items.flatMap { c in c.tagList.filter { c.tagOrigins?[$0] == "you" } })
+        return tags.filter { $0.count >= 2 || byHand.contains($0.name) }.map(\.name)
+    }
 
     nonisolated static func countTags(_ list: [Capture]) -> [(name: String, count: Int)] {
         var order: [String] = []
@@ -383,7 +389,7 @@ final class CaptureController {
         c.reminderPhrase = intent.reminderPhrase
         let knownTags = CaptureLibrary.shared.tagNames
         for t in intent.tags { c.addTag(t, origin: "said") }
-        for t in CaptureTags.mentioned(in: note, existing: knownTags) { c.addTag(t, origin: "orca") }
+        for t in CaptureTags.mentioned(in: note, existing: CaptureLibrary.shared.establishedTagNames) { c.addTag(t, origin: "orca") }
         c.title = CaptureContext.title(page: s.pageTitle, window: s.context.windowTitle, note: note, ocr: "", app: s.context.appName)
         let clip = s.clip
         let keepClip = s.keepsClip
@@ -423,6 +429,15 @@ final class CaptureController {
                     c.noteSource = source.rawValue
                 }
                 _ = CaptureController.store(c)   // the clip below still has to be stopped either way
+            }
+            // Then read it once for what was meant: misheard names, corrections, what to tag it and where to put it.
+            if !c.note.isEmpty {
+                let before = c.note
+                c = await NoteUnderstanding.refine(c)
+                if c.note != before, c.title == CaptureContext.title(page: nil, window: nil, note: before, ocr: "", app: c.sourceApp) {
+                    c.title = CaptureContext.title(page: nil, window: nil, note: c.note, ocr: "", app: c.sourceApp)
+                }
+                _ = CaptureController.store(c)
             }
             if let clip {
                 let seconds = await clip.stop()
@@ -563,8 +578,8 @@ final class CaptureController {
             let lib = CaptureLibrary.shared
             let intent = SpokenIntent.parse(words, existing: lib.collections.map(\.name), existingTags: lib.tagNames)
             if c.collection == nil, let col = intent.collection { c.collection = col; c.collectionPhrase = intent.collectionPhrase }
-            for t in intent.tags { c.addTag(t, origin: "said") }
-            for t in CaptureTags.mentioned(in: words, existing: lib.tagNames) { c.addTag(t, origin: "orca") }
+            // The whole note, not just the new words: "Add more" is where people say "not cloth, it's Claude".
+            c.refileTags(text: c.note, existing: lib.tagNames, mentionable: lib.establishedTagNames)
             var reminderTask: String?
             var newReminder = false
             if c.reminderDate == nil, let due = intent.reminderDate {
@@ -586,6 +601,8 @@ final class CaptureController {
                 }
                 guard CaptureController.store(c) else { return }
             }
+            c = await NoteUnderstanding.refine(c)
+            guard CaptureController.store(c) else { return }
             if Preferences.shared.captureAutoTags, c.tagList.count < 3 {
                 for t in await CaptureTags.suggest(note: c.note, title: c.title, ocr: c.ocr, collection: c.collection,
                                                    existing: CaptureLibrary.shared.tagNames) {

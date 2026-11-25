@@ -118,6 +118,7 @@ final class CaptureRecorder {
         req.shouldReportPartialResults = true
         req.taskHint = .dictation
         req.addsPunctuation = true
+        req.contextualStrings = PersonalWords.all(limit: 100)   // their tags, collections, apps: heard right first time
         if recognizer.supportsOnDeviceRecognition && Preferences.shared.voiceOnDevice { req.requiresOnDeviceRecognition = true }
         request?.endAudio()
         task?.cancel()
@@ -207,7 +208,7 @@ final class CaptureRecorder {
     nonisolated(unsafe) static var lastFileError: String?
 
     /// Transcribes a saved recording from start to end — the safety net if live recognition dropped words.
-    nonisolated static func transcribeFile(_ url: URL, locale: String, onDevice: Bool) async -> String? {
+    nonisolated static func transcribeFile(_ url: URL, locale: String, onDevice: Bool, words: [String] = []) async -> String? {
         guard FileManager.default.fileExists(atPath: url.path),
               let recognizer = SFSpeechRecognizer(locale: Locale(identifier: locale)) ?? SFSpeechRecognizer(),
               recognizer.isAvailable else { lastFileError = "recognizer unavailable"; return nil }
@@ -218,6 +219,7 @@ final class CaptureRecorder {
         req.shouldReportPartialResults = true
         req.taskHint = .dictation
         req.addsPunctuation = true
+        if !words.isEmpty { req.contextualStrings = Array(words.prefix(100)) }
         if onDevice && recognizer.supportsOnDeviceRecognition { req.requiresOnDeviceRecognition = true }
         final class State: @unchecked Sendable {
             var joiner = SegmentJoiner(); var done = false; var task: SFSpeechRecognitionTask?

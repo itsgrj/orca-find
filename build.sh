@@ -40,6 +40,9 @@ cp Resources/WhatsNew.json "$APP/Contents/Resources/"
 mkdir -p "$APP/Contents/Frameworks"
 cp -R ".build/$CONFIG/Sparkle.framework" "$APP/Contents/Frameworks/"
 rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" "$APP/Contents/Frameworks/Sparkle.framework/XPCServices"
+# The on-device text model's runtime (llama.cpp); the model itself is an optional download.
+rm -rf "$APP/Contents/Frameworks/llama.framework"
+cp -R ".build/$CONFIG/llama.framework" "$APP/Contents/Frameworks/"
 # MobileCLIP-S2 (~190 MB) for describing pictures; fetched + compiled once by tools/fetch_mobileclip.sh
 # (the app downloads its own copy; this one is for running from .build and for the tokenizer files).
 [[ -d Resources/Models/mobileclip_s2_text.mlmodelc ]] || ./tools/fetch_mobileclip.sh
@@ -106,6 +109,7 @@ FW="$APP/Contents/Frameworks/Sparkle.framework"
 codesign --force --sign "$IDENTITY" "$FW/Versions/B/Autoupdate" >/dev/null 2>&1
 codesign --force --sign "$IDENTITY" "$FW/Versions/B/Updater.app" >/dev/null 2>&1
 codesign --force --sign "$IDENTITY" "$FW" >/dev/null 2>&1
+codesign --force --sign "$IDENTITY" "$APP/Contents/Frameworks/llama.framework" >/dev/null 2>&1
 codesign --force --sign "$IDENTITY" "$APP" >/dev/null 2>&1
 codesign --verify --deep "$APP" && echo "✓ Built $APP"
 # Tell macOS about this copy so its Share menu entry points here.

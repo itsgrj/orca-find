@@ -16,7 +16,8 @@ let package = Package(
         .executableTarget(
             name: "OrcaFind",
             dependencies: [.product(name: "FluidAudio", package: "FluidAudio"),
-                           .product(name: "Sparkle", package: "Sparkle")],
+                           .product(name: "Sparkle", package: "Sparkle"),
+                           "llama"],
             path: "Sources/OrcaFind",
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
@@ -30,6 +31,13 @@ let package = Package(
                 // Sparkle.framework is copied into Contents/Frameworks by build.sh.
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
             ]
+        ),
+        // Runs the optional on-device text model ("Understands what you meant", for Macs without Apple
+        // Intelligence). MIT licence. Pinned to a release two weeks old; build.sh copies llama.framework into the app.
+        .binaryTarget(
+            name: "llama",
+            url: "https://github.com/ggml-org/llama.cpp/releases/download/b12255/llama-b12255-xcframework.zip",
+            checksum: "ce52b3ae32fb72595128eff556660e2cc81fcba0c230c52b5e7a961dbbbd0f8f"
         ),
         // `swift test` — the search parser checks run in a second; the Apple Intelligence checks
         // only run where the on-device model is available (`swift test --filter SentenceUnderstandingTests`).

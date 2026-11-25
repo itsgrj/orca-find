@@ -3,34 +3,56 @@ import CoreML
 import Vision
 import Accelerate
 
-/// Apple's MobileCLIP-S2 (bundled in Resources/Models): turns a picture and a description into
-/// points in the same 512-number space, so "people around a whiteboard" can find a photo even
-/// though no Vision label says that. Runs on this Mac; nothing leaves it.
-/// Weights: Apple Machine Learning Research Model License (research / non-commercial only).
+/// The picture model: turns a picture and a description into points in the same space, so "people around a
+/// whiteboard" can find a photo even though no Vision label says that. Runs on this Mac; nothing leaves it.
+///
+/// Two models can fill this role; whichever is installed is used, SigLIP 2 first:
+///   SigLIP 2 B/16-256 by Google (Apache 2.0, free for commercial use), converted to Core ML by Orca.
+///   MobileCLIP-S2 by Apple (research / non-commercial licence), the original.
+/// Embeddings are stored per model (`modelID`), so switching re-reads pictures once.
+/// (The type keeps its old name so the rest of the app doesn't change.)
 enum MobileCLIP {
-    static let modelID = "mobileclip-s2"
-    static let dimensions = 512
+    enum Backend: String, Sendable { case siglip, mobileclip }
+
+    /// SigLIP 2 when its files are here; MobileCLIP-S2 otherwise. ORCA_PICTURE_MODEL=mobileclip forces the old one.
+    static var backend: Backend {
+        if ProcessInfo.processInfo.environment["ORCA_PICTURE_MODEL"] == "mobileclip" { return .mobileclip }
+        return siglipInstalled ? .siglip : .mobileclip
+    }
+    static var modelID: String { backend == .siglip ? "siglip2-b16-256" : "mobileclip-s2" }
+    static var dimensions: Int { backend == .siglip ? 768 : 512 }
+
+    static var siglipInstalled: Bool {
+        PrivateAI.find("siglip2_image.mlmodelc") != nil && PrivateAI.find("siglip2_text.mlmodelc") != nil
+            && PrivateAI.find("siglip2-vocab.json") != nil && PrivateAI.find("siglip2-merges.txt") != nil
+    }
+
+    private enum Tokenizer { case clip(CLIPTokenizer), siglip(SigLIPTokenizer) }
 
     private final class Models: @unchecked Sendable {
+        let backend: Backend
         let image: MLModel
         let text: MLModel
-        let tokenizer: CLIPTokenizer
+        let tokenizer: Tokenizer
         let constraint: MLImageConstraint
         let imageLock = NSLock()
         let textLock = NSLock()
-        init(image: MLModel, text: MLModel, tokenizer: CLIPTokenizer) throws {
-            self.image = image; self.text = text; self.tokenizer = tokenizer
+        init(backend: Backend, image: MLModel, text: MLModel, tokenizer: Tokenizer) throws {
+            self.backend = backend; self.image = image; self.text = text; self.tokenizer = tokenizer
             guard let c = image.modelDescription.inputDescriptionsByName["image"]?.imageConstraint else {
                 throw CocoaError(.fileReadCorruptFile)
             }
             constraint = c
         }
+        var output: String { backend == .siglip ? "embedding" : "final_emb_1" }
+        /// SigLIP 2 was trained on the whole picture squeezed to a square; MobileCLIP on the centre square.
+        var crop: VNImageCropAndScaleOption { backend == .siglip ? .scaleFill : .centerCrop }
     }
 
-    /// The two encoders are downloaded once ("Understands your photos" in Orca's private AI) into
-    /// Application Support; the small tokenizer files ship in the app. See PrivateAI.find.
+    /// The encoders are downloaded once ("Understands your photos" in Orca's private AI) into
+    /// Application Support; MobileCLIP's small tokenizer files ship in the app. See PrivateAI.find.
     static var modelsInstalled: Bool {
-        PrivateAI.find("mobileclip_s2_image.mlmodelc") != nil && PrivateAI.find("mobileclip_s2_text.mlmodelc") != nil
+        siglipInstalled || (PrivateAI.find("mobileclip_s2_image.mlmodelc") != nil && PrivateAI.find("mobileclip_s2_text.mlmodelc") != nil)
     }
 
     private static let loadLock = NSLock()
@@ -40,27 +62,47 @@ enum MobileCLIP {
     /// Loaded on first use; tries again after a download (see `reload`).
     private static var models: Models? {
         loadLock.lock(); defer { loadLock.unlock() }
-        if let m = loaded { return m }
+        let want = backend
+        if let m = loaded, m.backend == want { return m }
         if let f = failedAt, Date().timeIntervalSince(f) < 30 { return nil }
-        guard let image = PrivateAI.find("mobileclip_s2_image.mlmodelc"), let text = PrivateAI.find("mobileclip_s2_text.mlmodelc"),
-              let vocab = PrivateAI.find("clip-vocab.json"), let merges = PrivateAI.find("clip-merges.txt") else { failedAt = Date(); return nil }
         do {
             let cfg = MLModelConfiguration()
             cfg.computeUnits = .all
-            let tok = try CLIPTokenizer(vocabURL: vocab, mergesURL: merges)
-            let m = try Models(image: MLModel(contentsOf: image, configuration: cfg), text: MLModel(contentsOf: text, configuration: cfg), tokenizer: tok)
+            let m: Models
+            switch want {
+            case .siglip:
+                guard let image = PrivateAI.find("siglip2_image.mlmodelc"), let text = PrivateAI.find("siglip2_text.mlmodelc"),
+                      let vocab = PrivateAI.find("siglip2-vocab.json"), let merges = PrivateAI.find("siglip2-merges.txt") else { failedAt = Date(); return nil }
+                let tk = try SigLIPTokenizer(vocabURL: vocab, mergesURL: merges)
+                let im = try MLModel(contentsOf: image, configuration: cfg)
+                // The text side on the CPU: 7 ms a phrase, ready in ~1 s. On the Neural Engine macOS re-prepares this
+                // 270 MB model on every launch (~12 s before the first search); the GPU path crashed.
+                let tcfg = MLModelConfiguration()
+                tcfg.computeUnits = .cpuOnly
+                let tx = try MLModel(contentsOf: text, configuration: tcfg)
+                m = try Models(backend: .siglip, image: im, text: tx, tokenizer: .siglip(tk))
+            case .mobileclip:
+                guard let image = PrivateAI.find("mobileclip_s2_image.mlmodelc"), let text = PrivateAI.find("mobileclip_s2_text.mlmodelc"),
+                      let vocab = PrivateAI.find("clip-vocab.json"), let merges = PrivateAI.find("clip-merges.txt") else { failedAt = Date(); return nil }
+                m = try Models(backend: .mobileclip, image: MLModel(contentsOf: image, configuration: cfg), text: MLModel(contentsOf: text, configuration: cfg),
+                               tokenizer: .clip(CLIPTokenizer(vocabURL: vocab, mergesURL: merges)))
+                // Still on the old model: move this Mac to SigLIP 2 in the background.
+                Task { @MainActor in PrivateAI.shared.upgradePhotosIfNeeded() }
+            }
             loaded = m
             return m
         } catch {
-            NSLog("OrcaFind: MobileCLIP unavailable: \(error)")
+            NSLog("OrcaFind: picture model unavailable: \(error)")
             failedAt = Date()
             return nil
         }
     }
 
-    /// After the model is downloaded or removed.
+    /// After a model is downloaded or removed.
     static func reload() {
         loadLock.lock(); loaded = nil; failedAt = nil; loadLock.unlock()
+        cacheLock.lock(); textCache.removeAll(); cacheLock.unlock()
+        matchLock.lock(); matchCache.removeAll(); matchLock.unlock()
     }
 
     static var isBundled: Bool { modelsInstalled }
@@ -73,15 +115,15 @@ enum MobileCLIP {
 
     // MARK: Encoding
 
-    /// Unit-length embedding of a picture (center square, as MobileCLIP was trained).
+    /// Unit-length embedding of a picture.
     static func imageVector(_ cg: CGImage) -> [Float]? {
         guard let m = models else { return nil }
         return autoreleasepool {
             guard let fv = try? MLFeatureValue(cgImage: cg, constraint: m.constraint,
-                                               options: [.cropAndScale: VNImageCropAndScaleOption.centerCrop.rawValue]) else { return nil }
+                                               options: [.cropAndScale: m.crop.rawValue]) else { return nil }
             m.imageLock.lock(); defer { m.imageLock.unlock() }
             guard let out = try? m.image.prediction(from: MLDictionaryFeatureProvider(dictionary: ["image": fv])),
-                  let a = out.featureValue(for: "final_emb_1")?.multiArrayValue else { return nil }
+                  let a = out.featureValue(for: m.output)?.multiArrayValue else { return nil }
             return normalized(a)
         }
     }
@@ -89,21 +131,25 @@ enum MobileCLIP {
     private static var textCache: [String: [Float]] = [:]
     private static let cacheLock = NSLock()
 
-    /// Unit-length embedding of a description. Cached per phrase; ~3 ms when not.
+    /// Unit-length embedding of a description. Cached per phrase; a few ms when not.
     static func textVector(_ phrase: String) -> [Float]? {
         let key = phrase.lowercased()
         cacheLock.lock()
         if let hit = textCache[key] { cacheLock.unlock(); return hit }
         cacheLock.unlock()
         guard let m = models else { return nil }
-        let ids = m.tokenizer.encode(key)
-        guard let arr = try? MLMultiArray(shape: [1, NSNumber(value: CLIPTokenizer.contextLength)], dataType: .int32) else { return nil }
-        let p = arr.dataPointer.bindMemory(to: Int32.self, capacity: ids.count)
-        for (i, v) in ids.enumerated() { p[i] = v }
+        let ids: [Int32], length: Int
+        switch m.tokenizer {
+        case .clip(let t): ids = t.encode(key); length = CLIPTokenizer.contextLength
+        case .siglip(let t): ids = t.encode(key); length = SigLIPTokenizer.contextLength
+        }
+        guard let arr = try? MLMultiArray(shape: [1, NSNumber(value: length)], dataType: .int32) else { return nil }
+        let p = arr.dataPointer.bindMemory(to: Int32.self, capacity: length)
+        for i in 0..<length { p[i] = i < ids.count ? ids[i] : 0 }
         m.textLock.lock()
         let out = try? m.text.prediction(from: MLDictionaryFeatureProvider(dictionary: ["text": arr]))
         m.textLock.unlock()
-        guard let a = out?.featureValue(for: "final_emb_1")?.multiArrayValue else { return nil }
+        guard let a = out?.featureValue(for: m.output)?.multiArrayValue else { return nil }
         let v = normalized(a)
         cacheLock.lock(); textCache[key] = v; cacheLock.unlock()
         return v
@@ -132,7 +178,7 @@ enum MobileCLIP {
     }
 
     static func decode(_ d: Data) -> [Float]? {
-        guard d.count == dimensions * MemoryLayout<Float16>.size else { return nil }
+        guard d.count == dimensions * MemoryLayout<Float16>.size else { return nil }   // another model's: re-read
         return d.withUnsafeBytes { raw in raw.bindMemory(to: Float16.self).map { Float($0) } }
     }
 
@@ -150,12 +196,31 @@ enum MobileCLIP {
         let z: Float          // how far above this Mac's typical picture, in standard deviations
         let strength: Strength
         /// 0…1 for ranking alongside Vision label confidences.
-        var weight: Float { min(1, max(0, (similarity - 0.17) / 0.17)) }
+        let weight: Float
     }
 
-    /// Pictures that look like the description. Calibrated on MobileCLIP-S2 against a labelled set
-    /// on this Mac: real matches scored 0.21–0.34 and stood ≥ 3.9 sd above the rest; things that
-    /// weren't there topped out at 0.19, gibberish stayed under 3 sd.
+    /// Where a match starts, per model. Similarity scales differ: SigLIP 2's are smaller but calibrated
+    /// (its own probability is sigmoid(112.9 × similarity − 16.8)).
+    struct Calibration: Sendable {
+        let minSimilarity: Float, minZ: Float, strongSimilarity: Float, strongZ: Float
+        /// Ranking weight 0…1 rises from `weightFloor` over `weightSpan`.
+        let weightFloor: Float, weightSpan: Float
+        func weight(_ s: Float) -> Float { min(1, max(0, (s - weightFloor) / weightSpan)) }
+    }
+    /// MobileCLIP-S2, on this Mac's labelled set: real matches scored 0.21–0.34 and stood ≥ 3.9 sd above the rest;
+    /// things that weren't there topped out at 0.19, gibberish stayed under 3 sd.
+    static let mobileclipCalibration = Calibration(minSimilarity: 0.19, minZ: 3.5, strongSimilarity: 0.24, strongZ: 4.5,
+                                                    weightFloor: 0.17, weightSpan: 0.17)
+    /// SigLIP 2, on 600 labelled photos searched as a library where each kind is 1% (PictureModelEval):
+    /// 96.6% of results right, 93% of matches found, 7 hits for things not there (MobileCLIP-S2 on the same set:
+    /// 96.7%, 97%, 12). Real matches' similarity: p10 0.099, median 0.140; unrelated pictures' p99.9: 0.085.
+    /// minZ is lower than MobileCLIP's: a library full of similar pictures (a folder of purple avatars) mustn't
+    /// hide them from "purple gradient"; on the labelled set z between 1.5 and 3 changed nothing.
+    static var siglipCalibration = Calibration(minSimilarity: 0.10, minZ: 2.0, strongSimilarity: 0.13, strongZ: 3.0,
+                                                weightFloor: 0.09, weightSpan: 0.08)
+    static var calibration: Calibration { backend == .siglip ? siglipCalibration : mobileclipCalibration }
+
+    /// Pictures that look like the description (thresholds: `calibration`).
     static func matches(for phrase: String) -> [String: Match] {
         let p = prompt(phrase)
         let version = EmbeddingStore.shared.version
@@ -189,7 +254,8 @@ enum MobileCLIP {
 /// matrix × vector product (~1 ms for 10,000 pictures).
 final class EmbeddingStore: @unchecked Sendable {
     static let shared = EmbeddingStore()
-    private let dim = MobileCLIP.dimensions
+    /// Width of the rows held now (512 or 768, by model). Changes only when everything is replaced.
+    private var dim = MobileCLIP.dimensions
     private var paths: [String] = []
     private var row: [String: Int] = [:]
     private var matrix: [Float] = []
@@ -204,6 +270,7 @@ final class EmbeddingStore: @unchecked Sendable {
     func replaceAll(_ new: [String: [Float]]) {
         lock.lock(); defer { lock.unlock() }
         changes += 1
+        dim = MobileCLIP.dimensions
         paths = []; row = [:]; matrix = []
         paths.reserveCapacity(new.count); matrix.reserveCapacity(new.count * dim)
         for (p, v) in new where v.count == dim {
@@ -259,14 +326,15 @@ final class EmbeddingStore: @unchecked Sendable {
         var mean: Float = 0, sd: Float = 0
         vDSP_normalize(sims, 1, nil, 1, &mean, &sd, vDSP_Length(n))
         sd = max(sd, 0.01)
+        let c = MobileCLIP.calibration
         var out: [String: MobileCLIP.Match] = [:]
         for i in 0..<n {
             let s = sims[i]
-            guard s >= 0.19 else { continue }
+            guard s >= c.minSimilarity else { continue }
             let z = (s - mean) / sd
-            guard z >= 3.5 else { continue }
-            let strength: MobileCLIP.Strength = (s >= 0.24 && z >= 4.5) ? .strong : .likely
-            out[paths[i]] = MobileCLIP.Match(similarity: s, z: z, strength: strength)
+            guard z >= c.minZ else { continue }
+            let strength: MobileCLIP.Strength = (s >= c.strongSimilarity && z >= c.strongZ) ? .strong : .likely
+            out[paths[i]] = MobileCLIP.Match(similarity: s, z: z, strength: strength, weight: c.weight(s))
         }
         return out
     }

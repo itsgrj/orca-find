@@ -46,6 +46,9 @@ struct Capture: Identifiable, Hashable, Codable, Sendable {
     /// Who last listened to the recording to write `note`: nil = live words only, "apple" = Apple's recognizer
     /// over the whole recording, "model" = the downloaded English model. Never shown in the UI.
     var noteSource: String?
+    /// The words exactly as speech recognition heard them, kept when Orca put a misheard name right
+    /// ("clawed" → "Claude"), so nothing the person said is ever lost.
+    var noteHeard: String?
 
     /// Shared from Finder: where the file is (Orca remembers it, it doesn't keep a copy).
     var filePath: String?
@@ -69,6 +72,26 @@ struct Capture: Identifiable, Hashable, Codable, Sendable {
     }
 
     func hasTag(_ t: String) -> Bool { tagList.contains { CaptureTags.same($0, t) } }
+
+    /// Files tags by the whole note as it now reads. A tag heard in an earlier, rougher transcript goes when the
+    /// words no longer say it, and anything said with "not" goes too. Tags added by hand are never touched.
+    /// `mentionable`: tags a note may bring in by mentioning them (the library's established ones).
+    mutating func refileTags(text: String, existing: [String], mentionable: [String]? = nil, asked: [String] = [], takenBack: [String] = []) {
+        let gone = CaptureTags.rejected(in: text) + takenBack
+        var said = SpokenIntent.parse(text, existing: [], existingTags: existing).tags
+        // What Apple Intelligence (or the on-device model) read as asked for, in the person's spelling.
+        for t in asked where !said.contains(where: { CaptureTags.same($0, t) }) { said.append(CaptureTags.canonical(t, existing: existing)) }
+        said.removeAll { t in gone.contains { CaptureTags.same($0, t) } }
+        for t in tagList {
+            let origin = tagOrigins?[t]
+            if origin == "said", !said.contains(where: { CaptureTags.same($0, t) }) { removeTag(t) }
+            else if origin == "said" || origin == "orca", gone.contains(where: { CaptureTags.same($0, t) }) { removeTag(t) }
+        }
+        for t in said { addTag(t, origin: "said") }
+        for t in CaptureTags.mentioned(in: text, existing: mentionable ?? existing) where !gone.contains(where: { CaptureTags.same($0, t) }) {
+            addTag(t, origin: "orca")
+        }
+    }
 
     var imageURL: URL { CaptureStore.folder.appendingPathComponent("\(id).png") }
     var audioURL: URL { CaptureStore.folder.appendingPathComponent("\(id).m4a") }

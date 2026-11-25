@@ -52,7 +52,10 @@ enum CaptureTags {
 
     private static let stopAfter: Set<String> = [
         "and", "but", "so", "because", "for", "to", "remind", "the", "in", "on", "at", "please", "also", "too",
-        "then", "it", "this", "that", "save", "add", "put", "file", "which", "when", "maybe", "is", "was"
+        "then", "it", "this", "that", "save", "add", "put", "file", "which", "when", "maybe", "is", "was",
+        // A correction ends the tag: "clawed, not cloth" is #clawed, never #clawed-not or #not-cloth.
+        "not", "no", "never", "isn't", "isn’t", "it's", "it’s", "its", "sorry", "actually", "instead", "except", "mean", "meant",
+        "tag", "label", "hashtag", "rather", "hmm"
     ]
 
     /// "…tag it design and pricing", "hashtag motion", "#onboarding", "tagged as reference".
@@ -61,15 +64,26 @@ enum CaptureTags {
         let ns = text as NSString
         let full = NSRange(location: 0, length: ns.length)
         let patterns = [
-            #"\b(?:tag|label)\s+(?:it|this|that|them)\s+(?:as\s+|with\s+|under\s+)?([^.!?\n]{2,60})"#,
+            // The verb only: "a tag that says whether…" talks about a tag, it doesn't ask for one.
+            #"(?<!\ba\s)(?<!\bthe\s)(?<!\bthis\s)(?<!\bthat\s)(?<!\bone\s)(?<!\bno\s)\b(?:tag|label)\s+(?:it|this|that|them)\s+(?:as\s+|with\s+|under\s+)?((?:(?!\btag\s+it\b)[^.!?\n]){2,60})"#,
             #"\btagged\s+(?:as\s+|with\s+|under\s+)?([^.!?\n]{2,60})"#,
-            #"\bhash\s?tags?\s+([^.!?\n]{2,60})"#
+            #"\bhash\s?tags?\s+((?:(?!\bhash\s?tags?\b|\btag\s+it\b)[^.!?\n]){2,60})"#
         ]
         for p in patterns {
             guard let re = try? NSRegularExpression(pattern: p, options: [.caseInsensitive]) else { continue }
             for m in re.matches(in: text, range: full) {
-                let phrase = ns.substring(with: m.range).trimmingCharacters(in: .whitespaces)
-                for tag in items(ns.substring(with: m.range(at: 1))) where !out.contains(where: { same($0.0, tag) }) {
+                let captured = ns.substring(with: m.range(at: 1))
+                let found = items(captured)
+                // The phrase ends at the last tag word, so "…and put it in SigmaFlow" stays for the collection.
+                var end = m.range.location + m.range.length
+                let rest = (captured as NSString)
+                if rest.range(of: #"(?i)\b(?:put|save|add|file|keep|move)\s+(?:it|this|that)\b"#, options: .regularExpression).location != NSNotFound,
+                   let last = found.last?.split(separator: "-").last,
+                   let r = (captured as NSString).range(of: String(last), options: .caseInsensitive) as NSRange?, r.location != NSNotFound {
+                    end = m.range(at: 1).location + r.location + r.length
+                }
+                let phrase = ns.substring(with: NSRange(location: m.range.location, length: end - m.range.location)).trimmingCharacters(in: .whitespaces)
+                for tag in found where !out.contains(where: { same($0.0, tag) }) {
                     out.append((tag, phrase))
                 }
             }
@@ -80,6 +94,80 @@ enum CaptureTags {
                 if let t = normalize(ns.substring(with: m.range(at: 1))), !out.contains(where: { same($0.0, t) }) {
                     out.append((t, "#" + t))
                 }
+            }
+        }
+        // People correct themselves out loud, as they would with a person: "not cloth, it's Claude" swaps the tag,
+        // and anything said with "not" in front of it is never a tag.
+        for (wrong, right) in corrections(in: text) {
+            guard let i = out.firstIndex(where: { same($0.0, wrong) }) else { continue }
+            if out.contains(where: { same($0.0, right) }) { out.remove(at: i) } else { out[i].0 = right }
+        }
+        let gone = rejected(in: text)
+        out.removeAll { t in gone.contains { same($0, t.0) } }
+        // "Tag it pricing. Actually never mind, no tag.": everything asked for before that is off.
+        if let re = try? NSRegularExpression(pattern: #"(?i)\b(?:never\s?mind|forget\s+(?:it|that|the\s+tags?)|no\s+tags?|don['’]?t\s+tag\s+it)\b(?!\s+\w)|\bnever\s?mind\b"#),
+           let last = re.matches(in: text, range: full).last, let m = Range(last.range, in: text) {
+            out.removeAll { t in (text.range(of: t.1, options: .caseInsensitive)?.lowerBound ?? text.endIndex) < m.lowerBound }
+        }
+        return out
+    }
+
+    // MARK: Taking words back
+
+    /// "not only", "not sure" aren't corrections.
+    private static let notQualifiers: Set<String> = [
+        "only", "just", "sure", "really", "very", "quite", "so", "too", "that", "even", "yet", "necessarily", "exactly",
+        "bad", "great", "good", "much", "many", "all", "always", "now", "yet", "really", "working", "done", "for"
+    ]
+
+    /// Words said with "not" in front: "…not target claw, not cloth" → ["target-claw", "target", "claw", "cloth"].
+    /// These are never tags, whichever way a tag would otherwise have come.
+    static func rejected(in text: String) -> [String] {
+        let p = #"\b(?:not|don['’]?t\s+tag\s+(?:it|this)|no)\s+(?:tag(?:ged)?\s+(?:it\s+)?)?(?:as\s+|under\s+|with\s+)?(?:a\s+|an\s+|the\s+)?#?([^.!?,;:\n]{2,40})"#
+        guard let re = try? NSRegularExpression(pattern: p, options: [.caseInsensitive]) else { return [] }
+        let ns = text as NSString
+        var out: [String] = []
+        for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            var words: [String] = []
+            for w in ns.substring(with: m.range(at: 1)).split(separator: " ").map(String.init) {
+                let lw = w.lowercased().trimmingCharacters(in: .punctuationCharacters)
+                if words.isEmpty && notQualifiers.contains(lw) { break }
+                if stopAfter.contains(lw) || words.count == 3 { break }
+                words.append(lw)
+            }
+            guard !words.isEmpty else { continue }
+            for t in [words.joined(separator: " ")] + words {
+                if let n = normalize(t), !out.contains(n) { out.append(n) }
+            }
+        }
+        return out
+    }
+
+    /// (wrong, right) pairs: "not cloth, it's Claude", "it's Claude, not cloth", "cloth — sorry, Claude", "cloth, I mean Claude".
+    static func corrections(in text: String) -> [(wrong: String, right: String)] {
+        let word = #"([\p{L}\d][\p{L}\d\-]*(?:\s+[\p{L}\d][\p{L}\d\-]*)?)"#
+        let its = #"(?:it['’]?s|it\s+is|but|i\s+mean|i\s+meant|i\s+said)"#
+        let art = #"(?:a\s+|an\s+|the\s+)?"#
+        // Each pattern names which capture group is wrong and which is right.
+        let patterns: [(String, Int, Int)] = [
+            (#"\bnot\s+"# + art + #"([\p{L}\d][\p{L}\d\-]*)\s*[,.;—–-]?\s*"# + its + #"\s+"# + art + word, 1, 2),
+            (#"\b(?:it['’]?s|it\s+is)\s+"# + art + #"([\p{L}\d][\p{L}\d\-]*)\s*,?\s*not\s+"# + art + word, 2, 1),
+            (#"\b([\p{L}\d][\p{L}\d\-]*)\s*[,.;—–-]?\s*(?:sorry|i\s+mean|i\s+meant)\s*[,.—–-]?\s*"# + art + word, 1, 2),
+            // "Hashtag recipes, no, hashtag desserts"; "tag it travel, or rather tag it vacation"
+            (#"\b([\p{L}\d][\p{L}\d\-]*)\s*[,.;—–-]?\s*(?:no|or\s+rather|rather)\s*[,.—–-]?\s*(?:hash\s?tag|tag\s+it(?:\s+as|\s+under)?|make\s+it|label\s+it)\s+"# + art + word, 1, 2),
+            (#"\b([\p{L}\d][\p{L}\d\-]*)\s*,?\s*or\s+rather\s+"# + art + word, 1, 2),
+            // "Figma. No wait, Paper."
+            (#"\b([\p{L}\d][\p{L}\d\-]*)\s*[,.;—–-]?\s*(?:no,?\s+wait|wait,?\s+no|no,?\s+no|scratch\s+that|make\s+that)\s*[,.—–-]?\s*(?:make\s+it\s+|tag\s+it\s+)?"# + art + word, 1, 2)
+        ]
+        let ns = text as NSString
+        var out: [(String, String)] = []
+        for (p, w, r) in patterns {
+            guard let re = try? NSRegularExpression(pattern: p, options: [.caseInsensitive]) else { continue }
+            for m in re.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+                guard let wrong = normalize(ns.substring(with: m.range(at: w))),
+                      let right = items(ns.substring(with: m.range(at: r))).first,
+                      !same(wrong, right) else { continue }
+                out.append((wrong, right))
             }
         }
         return out
@@ -111,11 +199,19 @@ enum CaptureTags {
     }
 
     /// Tags the person already uses that appear as words in the note ("…the design is…" with #design).
+    /// Two-word tags must appear as those two words in order; a tag never comes from words said with "not".
     static func mentioned(in text: String, existing: [String]) -> [String] {
-        let words = Set(text.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count > 2 })
+        let words = text.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
+        let gone = rejected(in: text)
         return existing.filter { t in
             let parts = t.split(separator: "-").map(String.init)
-            return parts.allSatisfy { p in words.contains(where: { same($0, p) }) }
+            guard !parts.isEmpty, parts.allSatisfy({ $0.count > 2 && !notTags.contains($0) && !["not", "never"].contains($0) }),
+                  !gone.contains(where: { g in same(g, t) || parts.contains { same($0, g) } }) else { return false }
+            guard parts.count <= words.count else { return false }
+            for i in 0...(words.count - parts.count) where zip(parts, words[i..<(i + parts.count)]).allSatisfy({ same($0, $1) }) {
+                return true
+            }
+            return false
         }
     }
 
@@ -139,7 +235,7 @@ enum CaptureTags {
                 // Filled straight into `TagReading`, so the answer always has the right shape and can't ramble.
                 let r = try await session.respond(to: prompt, generating: TagReading.self,
                                                   options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 120))
-                return clean(later(in: note) + r.content.tags, collection: collection, existing: existing, avoid: [site(in: title)].compactMap { $0 })
+                return clean(later(in: note) + r.content.tags, collection: collection, existing: existing, avoid: [site(in: title)].compactMap { $0 } + rejected(in: note))
             } catch {
                 return []
             }

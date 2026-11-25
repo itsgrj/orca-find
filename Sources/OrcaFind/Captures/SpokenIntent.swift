@@ -100,11 +100,16 @@ struct SpokenIntent: Equatable {
 
         // 1. Explicit: "add it to the summer trip", "save this in recipes", "put it under work"
         let explicit = #"\b(?:add|save|put|file|keep|throw)\s+(?:it|this|that)\s+(?:to|in|into|under|with)\s+(?:the\s+|my\s+|our\s+)?([\p{L}\d][\p{L}\d'’\- ]{0,40})"#
-        if let m = try? NSRegularExpression(pattern: explicit, options: [.caseInsensitive]).firstMatch(in: text, range: full),
-           let name = clean(ns.substring(with: m.range(at: 1)), existing: existing, requireExisting: false) {
-            out.collection = name
-            out.collectionPhrase = ns.substring(with: m.range).trimmingCharacters(in: .whitespaces)
-            return
+        // The last one wins, minus any taken back: "put it in SigmaFlow… actually no, put it in Personal branding".
+        let takenBack = CaptureTags.rejected(in: text)
+        if let re = try? NSRegularExpression(pattern: explicit, options: [.caseInsensitive]) {
+            for m in re.matches(in: text, range: full).reversed() {
+                guard let name = clean(ns.substring(with: m.range(at: 1)), existing: existing, requireExisting: false),
+                      !takenBack.contains(where: { same($0, name) }) else { continue }
+                out.collection = name
+                out.collectionPhrase = ns.substring(with: m.range).trimmingCharacters(in: .whitespaces)
+                return
+            }
         }
 
         // 2. "for the newsletter", "for Friday's newsletter", "for my Norway trip"
@@ -179,12 +184,15 @@ struct SpokenIntent: Equatable {
         return phrase.prefix(1).uppercased() + phrase.dropFirst()
     }
 
+    /// Case, spaces and simple plurals don't matter: "Recipes" = "recipe", "boxes" = "box", "Designs" = "design".
     static func same(_ a: String, _ b: String) -> Bool {
-        func norm(_ s: String) -> String {
-            var t = squash(s)
-            if t.hasSuffix("es") && t.count > 4 { t.removeLast(2) } else if t.hasSuffix("s") && t.count > 3 { t.removeLast() }
-            return t
+        func forms(_ s: String) -> Set<String> {
+            let t = squash(s)
+            var out: Set<String> = [t]
+            if t.hasSuffix("es") && t.count > 4 { out.insert(String(t.dropLast(2))) }
+            if t.hasSuffix("s") && t.count > 3 { out.insert(String(t.dropLast())) }
+            return out
         }
-        return norm(a) == norm(b)
+        return !forms(a).isDisjoint(with: forms(b))
     }
 }

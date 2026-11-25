@@ -37,6 +37,51 @@ enum DebugCLI {
                 }
             }
         }
+        // `--refile-captures [--apply]`: every saved voice note through today's pipeline (listen again with the
+        // person's words, read it for misheard names and corrections, re-file tags). Prints what would change.
+        if args.contains("--refile-captures") {
+            let apply = args.contains("--apply")
+            runOnMain {
+                CaptureLibrary.shared.reload()
+                for var c in CaptureStore.shared.all() where !c.note.isEmpty {
+                    let before = c
+                    if c.hasAudio, !c.noteTyped, let (text, source) = await NoteTranscriber.listen(c.audioURL, live: c.note),
+                       NoteTranscriber.accept(text, over: c.note) {
+                        NoteTranscriber.apply(text, source, to: &c, reminders: false)
+                    } else {
+                        c.refileTags(text: c.note, existing: CaptureLibrary.shared.tagNames, mentionable: CaptureLibrary.shared.establishedTagNames)
+                    }
+                    c = await NoteUnderstanding.refine(c)
+                    let changed = c.note != before.note || c.tagList != before.tagList || c.collection != before.collection
+                    guard changed else { continue }
+                    print("== \(c.id.prefix(8))")
+                    if c.note != before.note { print("  note  \(before.note)\n     →  \(c.note)") }
+                    if c.tagList != before.tagList { print("  tags  \(before.tagList) → \(c.tagList)") }
+                    if c.collection != before.collection { print("  collection  \(before.collection ?? "–") → \(c.collection ?? "–")") }
+                    if apply { CaptureStore.shared.save(c) }
+                }
+                print(apply ? "applied" : "dry run (add --apply to save)")
+            }
+        }
+        // `ORCA_MODELS_DIR=<dir with only mobileclip_s2_*.mlmodelc> OrcaFind --photos-upgrade-selftest`:
+        // using the old picture model starts the quiet move to SigLIP 2, and the old files go afterwards.
+        if args.contains("--photos-upgrade-selftest") {
+            runOnMain {
+                PrivateAI.shared.rescanAfterPhotos = false
+                UserDefaults.standard.removeObject(forKey: PrivateAI.Keys.photosUpgradeTried)
+                print("before  backend=\(MobileCLIP.backend) vector=\(MobileCLIP.textVector("a dog on a beach")?.count ?? 0)")
+                let t0 = Date()
+                let old = PrivateAI.folder.appendingPathComponent("mobileclip_s2_image.mlmodelc")
+                while !(MobileCLIP.siglipInstalled && !FileManager.default.fileExists(atPath: old.path)), Date().timeIntervalSince(t0) < 600 {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                }
+                let v = MobileCLIP.textVector("a dog on a beach")
+                print("after   backend=\(MobileCLIP.backend) vector=\(v?.count ?? 0) old model removed=\(!FileManager.default.fileExists(atPath: old.path))",
+                      String(format: "took %.0fs", Date().timeIntervalSince(t0)))
+                print(MobileCLIP.backend == .siglip && v?.count == 768 ? "ok" : "FAIL")
+                UserDefaults.standard.removeObject(forKey: PrivateAI.Keys.photosUpgradeTried)
+            }
+        }
         if args.contains("--model-download") {
             runOnMain {
                 let m = SpeechModel.shared

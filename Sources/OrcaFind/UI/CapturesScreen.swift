@@ -824,11 +824,11 @@ struct CaptureDetailScreen: View {
                         state.capturesFolder = nil
                         state.capturesTag = t
                         state.navigate(.captures)
-                    } label: { Chip(label: "#\(t)", symbol: byOrca ? "sparkle" : nil, style: .normal, onRemove: { removeTag(c, t) }) }
+                    } label: { Chip(label: "#\(t)", symbol: byOrca ? "sparkle" : nil, style: byOrca ? .suggested : .normal, onRemove: { removeTag(c, t) }) }
                         .buttonStyle(.plainHand)
-                        .help(byOrca ? "Orca added this from your words and the picture — × if it’s wrong" : "See every capture tagged #\(t)")
+                        .help(byOrca ? "Suggested by Orca from your note and the picture" : "See every capture tagged #\(t)")
                 }
-                Button { addingTag = true } label: { Chip(label: "+ tag", style: .normal) }
+                Button { addingTag = true } label: { Chip(label: "+ Add", style: .add) }
                     .buttonStyle(.plainHand)
                     .popover(isPresented: $addingTag, arrowEdge: .bottom) {
                         AddTagPopover(existing: library.tagNames, have: c.tagList) { t in
@@ -843,11 +843,11 @@ struct CaptureDetailScreen: View {
         }
     }
 
-    /// Only says something when it helps: how to add tags, or that ✦ tags were Orca's guess. Tags you added or
+    /// Only says something when it helps: how to add tags, or that ✦ tags were suggested by Orca. Tags you added or
     /// said need no label — you know where they came from.
     private func tagNote(_ c: Capture) -> String? {
         if c.tagList.isEmpty { return "Say “tag it design” while capturing, or add one here. Tags work across collections." }
-        if c.tagList.contains(where: { c.tagOrigins?[$0] == "orca" }) { return "✦ Orca’s guesses — × any that don’t fit" }
+        if c.tagList.contains(where: { c.tagOrigins?[$0] == "orca" }) { return "✦ Suggested by Orca" }
         return nil
     }
 

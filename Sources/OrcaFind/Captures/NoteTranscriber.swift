@@ -20,7 +20,7 @@ enum NoteTranscriber {
         let locale = prefs.voiceLocale, onDevice = prefs.voiceOnDevice
         if SpeechModel.shared.isReady, SpeechModel.languageIsEnglish {
             do {
-                let text = clean(try await SpeechModel.shared.transcribe(url))
+                let text = clean(try await SpeechModel.shared.transcribe(url, words: PersonalWords.all()))
                 if !text.isEmpty {
                     // A mumble heard as a swear word that Apple didn't hear: trust Apple for this note.
                     guard swears(in: text).subtracting(swears(in: live)).isEmpty else {
@@ -44,7 +44,7 @@ enum NoteTranscriber {
             let c = clean(t)
             if !c.isEmpty { return c }
         }
-        guard let t = await CaptureRecorder.transcribeFile(url, locale: locale, onDevice: onDevice) else { return nil }
+        guard let t = await CaptureRecorder.transcribeFile(url, locale: locale, onDevice: onDevice, words: await PersonalWords.all(limit: 100)) else { return nil }
         let c = clean(t)
         return c.isEmpty ? nil : c
     }
@@ -120,12 +120,12 @@ enum NoteTranscriber {
     @discardableResult
     static func apply(_ text: String, _ source: Source, to c: inout Capture, reminders: Bool) -> String? {
         c.note = text
+        c.noteHeard = nil   // these are the heard words now; Orca's name fixes come after (NoteUnderstanding)
         c.noteSource = source.rawValue
         let lib = CaptureLibrary.shared
         let again = SpokenIntent.parse(text, existing: lib.collections.map(\.name), existingTags: lib.tagNames, now: c.created)
         if c.collection == nil { c.collection = again.collection; c.collectionPhrase = again.collectionPhrase }
-        for t in again.tags { c.addTag(t, origin: "said") }
-        for t in CaptureTags.mentioned(in: text, existing: lib.tagNames) { c.addTag(t, origin: "orca") }
+        c.refileTags(text: text, existing: lib.tagNames, mentionable: lib.establishedTagNames)
         if reminders, c.reminderDate == nil, let due = again.reminderDate {
             c.reminderDate = due
             c.reminderPhrase = again.reminderPhrase

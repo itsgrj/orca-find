@@ -57,6 +57,53 @@ struct CaptureTagRuleTests {
     }
 }
 
+/// People correct themselves out loud: "not cloth, it's Claude". The correction must never become a tag.
+@Suite("Captures: spoken corrections")
+struct CaptureTagCorrectionTests {
+    func said(_ s: String) -> [String] { CaptureTags.spoken(in: s).map(\.tag) }
+
+    @Test func theRealNote() {
+        // Saved 2026-11-25 as #cloth-not, #clawed, #not-target.
+        #expect(said("Tag it under clawed. Tag it under clawed, not target claw, not cloth.") == ["clawed"])
+        #expect(said("Tag it under cloth not clod") == ["cloth"])
+    }
+
+    @Test func notEndsTheTag() {
+        #expect(!said("tag it design not motion").contains { $0.contains("not") })
+        #expect(said("tag it design, not motion") == ["design"])
+    }
+
+    @Test func swapsToWhatWasMeant() {
+        #expect(said("Tag it cloth. Hey, it's not cloth, it's clod.") == ["clod"])
+        #expect(said("tag it cloth. It's Claude, not cloth") == ["claude"])
+        #expect(said("tag it cloth, sorry, Claude") == ["claude"])
+        #expect(said("tag it cloth, I mean Claude") == ["claude"])
+        #expect(said("tag it design and cloth. not cloth but motion") == ["design", "motion"])
+    }
+
+    @Test func everydayNotIsNotACorrection() {
+        #expect(said("tag it design. Not sure it fits") == ["design"])
+        #expect(said("tag it design, not only for the app") == ["design"])
+        #expect(said("tag it design, no idea why") == ["design"])
+        #expect(said("tag it design, actually pretty good") == ["design"])
+    }
+
+    @Test func takenBackWordsAreNeverSuggested() {
+        #expect(CaptureTags.mentioned(in: "this is not design, it's about pricing", existing: ["design", "pricing"]) == ["pricing"])
+        #expect(CaptureTags.rejected(in: "not target claw, not cloth").contains("cloth"))
+    }
+
+    @Test func listeningAgainDropsTagsFromTheRougherWords() {
+        var c = Capture(id: "t", created: Date())
+        c.addTag("cloth-not", origin: "said")
+        c.addTag("design", origin: "you")
+        c.addTag("app", origin: "orca")
+        c.refileTags(text: "Tag it under Claude, not cloth. For any AI app.", existing: ["app", "design"])
+        #expect(c.tagList == ["design", "app", "claude"])
+    }
+}
+
+
 /// Real captures through Apple's on-device model. Each answer must be quick, short and sensible.
 @Suite("Captures: AppleModel tag suggestions", .serialized, .enabled(if: SentenceUnderstanding.status == .available))
 struct CaptureTagsTests {

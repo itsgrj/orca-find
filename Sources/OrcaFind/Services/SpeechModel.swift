@@ -24,8 +24,8 @@ final class SpeechModel {
     private(set) var rate: Double = 0
 
     /// What the download weighs (Preprocessor + Encoder + Decoder + JointDecision + vocabulary).
-    static let downloadBytes: Int64 = 463_000_000
-    static let downloadLabel = "460 MB"
+    static let downloadBytes: Int64 = 568_000_000
+    static let downloadLabel = "570 MB"
     /// Room needed on disk: the download plus what macOS keeps after preparing it.
     static let neededBytes: Int64 = 700_000_000
 
@@ -33,6 +33,8 @@ final class SpeechModel {
     @ObservationIgnored private var manager: AsrManager?
     @ObservationIgnored private var unload: Task<Void, Never>?
     @ObservationIgnored private var lastSample: (time: Date, fraction: Double)?
+    @ObservationIgnored private var listener: (words: [String], session: VocabularyBoostingSession)?
+    @ObservationIgnored private var listenerJob: Task<Void, Never>?
 
     private init() {
         state = Self.isInstalled ? .ready : .notInstalled
@@ -50,6 +52,13 @@ final class SpeechModel {
     }
 
     static var isInstalled: Bool { AsrModels.modelsExist(at: directory, version: .v2) }
+
+    /// The small second model (Parakeet CTC 110M, CC-BY-4.0, ~105 MB) that listens for the person's own words
+    /// (their tags, collections, apps) so "Claude" isn't written as "clawed". Part of the same download.
+    static var listenerDirectory: URL {
+        modelsFolder.appendingPathComponent(CtcModels.defaultCacheDirectory(for: .ctc110m).lastPathComponent, isDirectory: true)
+    }
+    static var hasListener: Bool { CtcModels.modelsExist(at: listenerDirectory) }
 
     // MARK: Can this Mac use it?
 
@@ -92,6 +101,9 @@ final class SpeechModel {
                     Task { @MainActor in self?.progressed(progress) }
                 }
                 try Task.checkCancellation()
+                await MainActor.run { if self?.isBusy == true { self?.state = .preparing } }
+                _ = try await CtcModels.download(to: Self.listenerDirectory)
+                try Task.checkCancellation()
                 await MainActor.run {
                     guard let self else { return }
                     self.state = Self.isInstalled ? .ready : .failed("The download didn’t finish. Try again.")
@@ -120,6 +132,8 @@ final class SpeechModel {
         cancel()
         manager = nil
         try? FileManager.default.removeItem(at: Self.directory)
+        try? FileManager.default.removeItem(at: Self.listenerDirectory)
+        listener = nil
         state = .notInstalled
     }
 
@@ -177,8 +191,19 @@ final class SpeechModel {
 
     // MARK: Transcribing
 
-    /// Words for a saved recording. Loads the model on first use and lets it go after a few idle minutes.
-    func transcribe(_ url: URL) async throws -> String {
+    /// People who downloaded the voice model before the listener existed get it quietly, once.
+    func fetchListenerIfMissing() {
+        guard isReady, !Self.hasListener, listenerJob == nil else { return }
+        listenerJob = Task {
+            do { _ = try await CtcModels.download(to: Self.listenerDirectory) }
+            catch { NSLog("OrcaFind: couldn’t fetch the word listener: \(error)") }
+            await MainActor.run { self.listenerJob = nil }
+        }
+    }
+
+    /// Words for a saved recording, with the person's own words (`words`) listened for.
+    /// Loads the models on first use and lets them go after a few idle minutes.
+    func transcribe(_ url: URL, words: [String] = []) async throws -> String {
         guard isReady else { throw CancellationError() }
         unload?.cancel()
         let m: AsrManager
@@ -195,7 +220,46 @@ final class SpeechModel {
             try? await Task.sleep(nanoseconds: 180 * 1_000_000_000)
             guard !Task.isCancelled else { return }
             self?.manager = nil
+            self?.listener = nil
+        }
+        // Only the person's words that sound like something in this note (at most 10): the listener's
+        // sound-based check only runs on short lists, and a short list can't pull in unrelated names.
+        var near: [String] = []
+        for c in PersonalWords.candidates(in: result.text, words: words, max: 10) where !near.contains(c.meant) {
+            // Names only: an ordinary word ("design") is already heard well, and boosting it rewrites real words.
+            if NoteUnderstanding.isOrdinary(c.meant) { continue }
+            near.append(c.meant)
+        }
+        guard !near.isEmpty, let timings = result.tokenTimings, !timings.isEmpty,
+              let session = await vocabulary(near) else { return result.text }
+        do {
+            let samples = try AudioConverter().resampleAudioFile(url)
+            if let out = await session.rescore(text: result.text, tokenTimings: timings, audioSamples: samples), out.wasModified {
+                return out.text
+            }
+        } catch {
+            NSLog("OrcaFind: word listener skipped: \(error)")
         }
         return result.text
     }
+
+    /// The listener primed with these words; rebuilt only when the words change.
+    private func vocabulary(_ words: [String]) async -> VocabularyBoostingSession? {
+        guard Self.hasListener else { fetchListenerIfMissing(); return nil }
+        if let listener, listener.words == words { return listener.session }
+        do {
+            let ctc = try await CtcModels.loadDirect(from: Self.listenerDirectory)
+            let terms = words.filter { $0.count >= 3 }.map { CustomVocabularyTerm(text: $0) }
+            // Wrong replacements cost more than misses in a note, so only clear sound-alikes are replaced.
+            let session = try await VocabularyBoostingSession(vocabulary: CustomVocabularyContext(terms: terms), ctcModels: ctc,
+                                                              thresholds: Self.thresholds)
+            listener = (words, session)
+            return session
+        } catch {
+            NSLog("OrcaFind: word listener unavailable: \(error)")
+            return nil
+        }
+    }
+
+    static var thresholds = VocabularyBoostingSession.Thresholds(cbw: 0, minSimilarity: 0.6)
 }

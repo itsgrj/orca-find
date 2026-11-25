@@ -183,7 +183,9 @@ extension View {
 }
 
 struct Chip: View {
-    enum Style { case normal, selected, understood }
+    /// `suggested`: something Orca added for you (faint magic tint, purple symbol).
+    /// `add`: an empty slot that adds one more — dashed, unfilled, quieter than the chips beside it.
+    enum Style { case normal, selected, understood, suggested, add }
     let label: String
     var symbol: String?
     var style: Style = .normal
@@ -192,11 +194,15 @@ struct Chip: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if let symbol { Image(systemName: symbol).font(.system(size: 11, weight: .medium)) }
+            if let symbol {
+                Image(systemName: symbol).font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(style == .suggested ? DS.Tone.magic.fg : fg)
+            }
             Text(label).font(DS.bodySM).lineLimit(1)
             if let onRemove {
                 Button(action: onRemove) { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
                     .buttonStyle(.plainHand).help("Remove").handCursor()
+                    .foregroundStyle(style == .suggested ? DS.text2 : fg)
             } else if menu {
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).opacity(0.7)
             }
@@ -204,13 +210,44 @@ struct Chip: View {
         .padding(.horizontal, 10).padding(.vertical, 5)
         .foregroundStyle(fg)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(bg))
-        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(style == .normal ? DS.border : .clear))
+        .overlay {
+            let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+            if style == .add {
+                shape.strokeBorder(DS.borderStrong, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            } else {
+                shape.strokeBorder(stroke)
+            }
+        }
         .contentShape(Rectangle())
         // "Understood" chips are read-only labels (only their ✕ is clickable); the rest are filter/menu buttons.
         .handCursor(style != .understood)
     }
-    private var fg: Color { style == .selected ? DS.onBrand : style == .understood ? DS.Tone.emphasis.fg : DS.text }
-    private var bg: Color { style == .selected ? DS.brand : style == .understood ? DS.Tone.emphasis.bg : DS.surface }
+    private var fg: Color {
+        switch style {
+        case .selected: return DS.onBrand
+        case .understood: return DS.Tone.emphasis.fg
+        case .add: return DS.text2
+        case .normal, .suggested: return DS.text
+        }
+    }
+    private var bg: Color {
+        switch style {
+        case .selected: return DS.brand
+        case .understood: return DS.Tone.emphasis.bg
+        // Magic tint, flattened: light = magic bg; dark = magic bg at 55% over the card.
+        case .suggested: return .dyn(0xF3EEFF, 0x241D40)
+        case .add: return .clear
+        case .normal: return DS.surface
+        }
+    }
+    private var stroke: Color {
+        switch style {
+        case .normal: return DS.border
+        // Magic text colour at ~20% over the tint.
+        case .suggested: return .dyn(0xD7C3F7, 0x483C6A)
+        default: return .clear
+        }
+    }
 }
 
 /// Grey "second line" text that stays readable on a selected row. Fixed colours like `DS.text2`
