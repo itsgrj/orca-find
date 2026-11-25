@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 /// "Orca" in every Share menu. It shows nothing itself: it reads what was shared, hands it to Orca with an
 /// orcafind://share link, and closes. Orca then opens its usual capture strip, already listening.
 ///
-/// Built by build.sh (not SwiftPM) into Orca Find.app/Contents/PlugIns/OrcaShare.appex.
+/// Built by build.sh (not SwiftPM) into OrcaFind.app/Contents/PlugIns/OrcaShare.appex.
 /// It runs sandboxed, so pictures travel on a private pasteboard: Orca never has to read this extension's
 /// own folder (which would make macOS ask "Orca would like to access data from other apps").
 @objc(ShareViewController)

@@ -324,7 +324,7 @@ struct PDFOptions: View {
                 HStack {
                     Text("\(Fmt.plural(ws.selected.count, "page")) picked").font(DS.caption).foregroundStyle(DS.focus)
                     Spacer()
-                    Button("Clear") { ws.clearSelection() }.buttonStyle(.plain).font(DS.caption).foregroundStyle(DS.text2).handCursor()
+                    Button("Clear") { ws.clearSelection() }.buttonStyle(.plainHand).font(DS.caption).foregroundStyle(DS.text2).handCursor()
                 }
                 OptHint("Rotate, Delete and Extract work on the picked pages.")
             } else {
@@ -421,7 +421,7 @@ struct PDFOptions: View {
                             .padding(2)
                             .overlay(Circle().strokeBorder(ws.marker == m ? DS.focus : .clear, lineWidth: 2))
                     }
-                    .buttonStyle(.plain).handCursor().help(m.rawValue)
+                    .buttonStyle(.plainHand).handCursor().help(m.rawValue)
                 }
             }
             if ws.hasText {
@@ -588,7 +588,7 @@ struct PDFFindOptions: View {
                     Button { ws.highlightAllHits() } label: {
                         Label("Highlight all", systemImage: "highlighter").font(DS.caption)
                     }
-                    .buttonStyle(.plain).foregroundStyle(DS.link).handCursor()
+                    .buttonStyle(.plainHand).foregroundStyle(DS.link).handCursor()
                     .help("Mark every match in the file")
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -603,7 +603,7 @@ struct PDFFindOptions: View {
                             .background(RoundedRectangle(cornerRadius: 6).fill(ws.focusedHit == h.id ? DS.tertiary : .clear))
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain).handCursor()
+                        .buttonStyle(.plainHand).handCursor()
                     }
                 }
             }

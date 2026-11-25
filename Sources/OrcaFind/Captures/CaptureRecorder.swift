@@ -3,7 +3,7 @@ import Speech
 import AVFoundation
 
 /// Records the "why" right after a grab: live transcript (on-device when possible) plus an .m4a of the voice.
-/// Stopping talking for ~2 s ends it — there is no Save button.
+/// Stopping talking for ~3.5 s ends it (5 s when the last words sound unfinished) — there is no Save button.
 @MainActor
 @Observable
 final class CaptureRecorder {
@@ -32,7 +32,9 @@ final class CaptureRecorder {
     @ObservationIgnored private var restarts = 0
 
     /// Seconds of quiet after speech that end the recording.
-    static let quietSeconds: Double = 2.0
+    static let quietSeconds: Double = 3.5
+    /// …when the last words sound like more is coming ("and…", "you know", "sort of").
+    static let unfinishedSeconds: Double = 5.0
     /// If nothing is said at all, save anyway after this long.
     static let nothingSaidSeconds: Double = 7.0
 
@@ -173,7 +175,7 @@ final class CaptureRecorder {
                 if let text, !text.isEmpty {
                     owner.transcript = owner.joiner.absorb(text)
                     owner.heardSpeech = true
-                    owner.armSilence(Self.quietSeconds)
+                    owner.armSilence(Self.soundsUnfinished(owner.transcript) ? Self.unfinishedSeconds : Self.quietSeconds)
                 }
                 if isFinal || error != nil {
                     owner.transcript = owner.joiner.commit()
@@ -184,6 +186,23 @@ final class CaptureRecorder {
             }
         }
     }
+
+    /// True when the words so far end mid-thought: on "and", "so", "you know", "sort of", a filler, or a comma.
+    /// Getting it wrong only costs a second and a half of waiting, so it leans towards yes.
+    nonisolated static func soundsUnfinished(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.hasSuffix(",") || t.hasSuffix("…") || t.hasSuffix("...") || t.hasSuffix("-") { return true }
+        let words = t.lowercased().replacingOccurrences(of: "’", with: "'")
+            .split { !$0.isLetter && $0 != "'" }.map(String.init)
+        guard let last = words.last else { return false }
+        return unfinishedWords.contains(last) || unfinishedPairs.contains(words.suffix(2).joined(separator: " "))
+    }
+
+    nonisolated private static let unfinishedWords: Set<String> = [
+        "and", "so", "but", "or", "because", "cause", "'cause", "like", "then", "also", "plus", "which", "maybe", "if",
+        "the", "a", "an", "to", "of", "with", "for", "um", "umm", "uh", "uhh", "uhm", "erm", "er", "hmm",
+    ]
+    nonisolated private static let unfinishedPairs: Set<String> = ["you know", "i mean", "kind of", "sort of", "i think"]
 
     nonisolated(unsafe) static var lastFileError: String?
 
@@ -353,5 +372,41 @@ struct SegmentJoiner {
         let firstN = n.split(separator: " ").first, firstO = o.split(separator: " ").first
         if Double(n.count) < Double(o.count) * 0.6 { return true } // much shorter: it started over
         return firstN != firstO && n.count < o.count             // different start, not growing
+    }
+}
+
+/// Puts one voice recording on the end of another, as one .m4a ("Add more" on the Saved card).
+enum AudioJoin {
+    static func append(_ piece: URL, to main: URL) async -> Bool {
+        let comp = AVMutableComposition()
+        guard let track = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else { return false }
+        do {
+            var at = CMTime.zero
+            for url in [main, piece] {
+                let asset = AVURLAsset(url: url)
+                guard let src = try await asset.loadTracks(withMediaType: .audio).first else { return false }
+                let length = try await asset.load(.duration)
+                try track.insertTimeRange(CMTimeRange(start: .zero, duration: length), of: src, at: at)
+                at = CMTimeAdd(at, length)
+            }
+        } catch {
+            NSLog("OrcaFind: couldn’t join recordings: \(error)")
+            return false
+        }
+        guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetAppleM4A) else { return false }
+        let out = main.deletingLastPathComponent().appendingPathComponent(".joining-\(UUID().uuidString).m4a")
+        export.outputURL = out
+        export.outputFileType = .m4a
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in export.exportAsynchronously { c.resume() } }
+        guard export.status == .completed else {
+            NSLog("OrcaFind: couldn’t join recordings: \(export.error.map { "\($0)" } ?? "export \(export.status.rawValue)")")
+            try? FileManager.default.removeItem(at: out)
+            return false
+        }
+        do { _ = try FileManager.default.replaceItemAt(main, withItemAt: out) } catch {
+            try? FileManager.default.removeItem(at: out)
+            return false
+        }
+        return true
     }
 }

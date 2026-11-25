@@ -101,9 +101,9 @@ enum ShareImages {
         }
     }
 
-    /// One line per share in ~/Library/Logs/Orca Find/share.log, so a fallback picture can be explained.
+    /// One line per share in ~/Library/Logs/OrcaFind/share.log, so a fallback picture can be explained.
     static func log(_ line: String) {
-        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Orca Find")
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/OrcaFind")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let file = dir.appendingPathComponent("share.log")
         let stamp = ISO8601DateFormatter().string(from: Date())

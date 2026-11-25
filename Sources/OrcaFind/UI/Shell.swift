@@ -131,13 +131,13 @@ struct BrandAndTabs: View {
                 ForEach(AppSection.Tab.allCases, id: \.self) { tab in
                     let active = state.section.tab == tab
                     Button { go(tab) } label: {
-                        Text(tab.rawValue).font(DS.body)
+                        Text(tab.title).font(DS.body)
                             .foregroundStyle(active ? .white : DS.onDark2)
                             .padding(.horizontal, 12).padding(.vertical, 6)
                             .background(RoundedRectangle(cornerRadius: 8).fill(active ? DS.topbarField : .clear))
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHand)
                     .handCursor()
                 }
             }
@@ -191,7 +191,7 @@ struct TopSearch: View {
                     }
                 Button { state.navigate(.home); state.startVoiceSearch() } label: {
                     Image(systemName: "mic.fill").font(.system(size: 11)).foregroundStyle(DS.onDark)
-                }.buttonStyle(.plain).help("Search by voice (⌥⌘F)")
+                }.buttonStyle(.plainHand).help("Search by voice (⌥⌘F)")
                 Kbd("⌘K", dark: true)
             }
             .padding(.horizontal, 10).frame(width: Self.width, height: 30)
@@ -224,13 +224,13 @@ struct TrailingBar: View {
             }
             // .borderlessButton re-renders the label as a black template image; a plain-styled
             // button menu keeps our colour and sizing so it matches the moon / gear icons.
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor()
             .help("Smart folders")
             IconBtn(symbol: "moon", dark: true, help: "Light / dark (⌃⌘T)") { state.prefs.toggleDark() }
             SettingsLink {
                 Image(systemName: "gearshape").font(.system(size: 13, weight: .medium)).foregroundStyle(DS.onDark).frame(width: 28, height: 28)
             }
-            .buttonStyle(.plain).help("Settings (⌘,)")
+            .buttonStyle(.plainHand).help("Settings (⌘,)")
         }
     }
 }
@@ -258,10 +258,10 @@ struct MiniPlayer: View {
                 .frame(height: 3)
             }
             .frame(width: 120)
-            Button { p.previous() } label: { Image(systemName: "backward.fill") }.buttonStyle(.plain)
-            Button { p.toggle() } label: { Image(systemName: p.isPlaying ? "pause.fill" : "play.fill") }.buttonStyle(.plain)
-            Button { p.next() } label: { Image(systemName: "forward.fill") }.buttonStyle(.plain)
-            Button { p.stop() } label: { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }.buttonStyle(.plain).foregroundStyle(DS.onDark2)
+            Button { p.previous() } label: { Image(systemName: "backward.fill") }.buttonStyle(.plainHand)
+            Button { p.toggle() } label: { Image(systemName: p.isPlaying ? "pause.fill" : "play.fill") }.buttonStyle(.plainHand)
+            Button { p.next() } label: { Image(systemName: "forward.fill") }.buttonStyle(.plainHand)
+            Button { p.stop() } label: { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }.buttonStyle(.plainHand).foregroundStyle(DS.onDark2)
         }
         .font(.system(size: 11))
         .foregroundStyle(.white)
@@ -295,7 +295,7 @@ struct ScreenHeader<Trailing: View>: View {
                 Button(action: back.1) {
                     HStack(spacing: 4) { Image(systemName: "chevron.left").font(.system(size: 10, weight: .bold)); Text(back.0).font(DS.bodySM) }
                         .foregroundStyle(DS.link)
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plainHand)
             }
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -445,15 +445,15 @@ struct SelectionBar: View {
                 Button { state.trash(sel) } label: {
                     Label("Move to Trash", systemImage: "trash").font(DS.bodySM).padding(.horizontal, 10).padding(.vertical, 5)
                         .background(RoundedRectangle(cornerRadius: 8).fill(DS.critical))
-                }.buttonStyle(.plain)
-                Button { state.selection = [] } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }.buttonStyle(.plain).opacity(0.7)
+                }.buttonStyle(.plainHand)
+                Button { state.selection = [] } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }.buttonStyle(.plainHand).opacity(0.7)
             }
             .padding(.bottom, 22)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
     private func barButton(_ icon: String, _ label: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) { Label(label, systemImage: icon).font(DS.bodySM).padding(.horizontal, 8).padding(.vertical, 5) }.buttonStyle(.plain)
+        Button(action: action) { Label(label, systemImage: icon).font(DS.bodySM).padding(.horizontal, 8).padding(.vertical, 5) }.buttonStyle(.plainHand)
     }
 }
 
@@ -484,7 +484,7 @@ struct CapturesSearchField: View {
             if !state.capturesQuery.isEmpty {
                 Button { state.capturesQuery = "" } label: {
                     Image(systemName: "xmark.circle.fill").font(.system(size: 11)).foregroundStyle(DS.onDark2)
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plainHand)
             }
             Kbd("⌘K", dark: true)
         }

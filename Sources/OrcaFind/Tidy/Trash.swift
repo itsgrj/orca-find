@@ -1,6 +1,6 @@
 import Foundation
 
-/// Orca Find never deletes anything permanently: every removal goes to the Trash and can be undone.
+/// OrcaFind never deletes anything permanently: every removal goes to the Trash and can be undone.
 /// Each one is also written to Recently removed (RemovalLog), with who did it and why.
 @MainActor
 enum Trash {

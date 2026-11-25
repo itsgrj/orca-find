@@ -32,6 +32,97 @@ enum TextExtractor {
             .joined(separator: "\n")
     }
 
+    /// For captures: one pass over the whole picture, then every small line is read again up close.
+    /// Screenshots of web pages are full of 8–10px labels (chart axes, table rows, timestamps) that a
+    /// whole-picture pass misreads ("Repeated wet searches", "8003180S"). Cropping each small line and
+    /// enlarging it so the letters are ~48px tall fixes nearly all of them. Costs about a second.
+    static func recognizeCloseUp(_ image: CGImage) -> String {
+        let W = CGFloat(image.width), H = CGFloat(image.height)
+        let first = textRequest()
+        do { try VNImageRequestHandler(cgImage: image, options: [:]).perform([first]) } catch { return "" }
+        var rereads = 0
+        return (first.results ?? []).compactMap { obs -> String? in
+            guard let best = obs.topCandidates(1).first else { return nil }
+            let box = obs.boundingBox
+            let linePx = box.height * H
+            guard linePx < 30, rereads < 150 else { return withoutIconGlyph(best.string) }
+            rereads += 1
+            let pad = linePx * 0.6
+            let rect = CGRect(x: box.minX * W - pad, y: (1 - box.maxY) * H - pad,
+                              width: box.width * W + 2 * pad, height: linePx + 2 * pad)
+                .integral.intersection(CGRect(x: 0, y: 0, width: W, height: H))
+            guard let crop = image.cropping(to: rect), let big = enlarge(crop, by: max(2, 48 / max(linePx, 1))) else { return best.string }
+            let again = textRequest()
+            guard (try? VNImageRequestHandler(cgImage: big, options: [:]).perform([again])) != nil else { return best.string }
+            // Only text from the middle of the crop: the padding can catch the edge of the line above or below.
+            let words = (again.results ?? [])
+                .filter { abs($0.boundingBox.midY - 0.5) < 0.25 }
+                .sorted { $0.boundingBox.minX < $1.boundingBox.minX }
+                .compactMap { $0.topCandidates(1).first }
+            guard !words.isEmpty, words.allSatisfy({ $0.confidence >= 0.3 }) else { return best.string }
+            return withoutIconGlyph(bestOfBoth(first: best.string, closeUp: words.map(\.string).joined(separator: " ")))
+        }
+        .joined(separator: "\n")
+    }
+
+    /// The close-up reading is usually right, but now and then it breaks a word the first pass had
+    /// ("request" → "reauest"). When both readings have the same words in the same places, keep the
+    /// first pass's word wherever it's a real word and the close-up's isn't. Otherwise trust the close-up.
+    static func bestOfBoth(first: String, closeUp: String) -> String {
+        let a = first.split(separator: " ", omittingEmptySubsequences: true)
+        let b = closeUp.split(separator: " ", omittingEmptySubsequences: true)
+        guard a.count == b.count, a != b else { return closeUp }
+        return zip(a, b).map { x, y in
+            isWord(x) && !isWord(y) && letters(y).count > 0 ? String(x) : String(y)
+        }.joined(separator: " ")
+    }
+
+    /// Checkmarks and list icons at the start of a line come out as a stray "V", "~" or "/" — drop a lone
+    /// one when a capitalised word follows ("V Track failure trends" → "Track failure trends").
+    static func withoutIconGlyph(_ line: String) -> String {
+        let parts = line.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard parts.count == 2, ["V", "v", "~", "/", "\\", "✓", "✔", "√", "•", "·", "»", "›"].contains(String(parts[0])),
+              parts[1].first?.isUppercase == true, parts[1].contains(" ") else { return line }
+        return String(parts[1])
+    }
+
+    private static func letters(_ token: Substring) -> String { token.lowercased().filter(\.isLetter) }
+
+    /// The Mac's built-in English word list (/usr/share/dict/words), loaded once on first use.
+    private static let dictionary: Set<String> = {
+        guard let text = try? String(contentsOfFile: "/usr/share/dict/words", encoding: .utf8) else { return [] }
+        return Set(text.split(separator: "\n").map { $0.lowercased() })
+    }()
+
+    private static func isWord(_ token: Substring) -> Bool {
+        let w = letters(token)
+        guard w.count >= 2, !dictionary.isEmpty else { return false }
+        if dictionary.contains(w) { return true }
+        // The list has no plurals or -ed/-ing forms: "failed" counts if "fail" is there.
+        for suffix in ["s", "es", "ed", "d", "ing", "ly"] where w.hasSuffix(suffix) && w.count > suffix.count + 2 {
+            if dictionary.contains(String(w.dropLast(suffix.count))) { return true }
+        }
+        return false
+    }
+
+    private static func textRequest() -> VNRecognizeTextRequest {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.automaticallyDetectsLanguage = true
+        return request
+    }
+
+    private static func enlarge(_ image: CGImage, by factor: CGFloat) -> CGImage? {
+        let w = Int(CGFloat(image.width) * factor), h = Int(CGFloat(image.height) * factor)
+        guard w > 0, h > 0, let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                                 space: CGColorSpaceCreateDeviceRGB(),
+                                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        ctx.interpolationQuality = .high
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return ctx.makeImage()
+    }
+
     static func ocr(_ url: URL) -> String {
         guard let image = loadCGImage(url, maxPixel: 2600) else { return "" }
         return recognize(image)

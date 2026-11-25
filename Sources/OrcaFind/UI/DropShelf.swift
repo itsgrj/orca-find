@@ -222,7 +222,7 @@ struct DropShelfView: View {
                 Spacer()
                 if !held.isEmpty {
                     Button { DropShelfController.shared.releaseAll() } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary).help("Clear Holding").handCursor()
+                        .buttonStyle(.plainHand).foregroundStyle(.secondary).help("Clear Holding").handCursor()
                 }
             }
             .font(DS.bodySM).foregroundStyle(.primary)

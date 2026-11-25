@@ -1,10 +1,10 @@
 #!/bin/zsh
-# Builds "Orca Find.app" into ./build. Usage: ./build.sh [debug|release] [--open]
+# Builds "OrcaFind.app" into ./build. Usage: ./build.sh [debug|release] [--open]
 set -euo pipefail
 cd "$(dirname "$0")"
 
 CONFIG="${1:-release}"
-APP="build/Orca Find.app"
+APP="build/OrcaFind.app"
 
 echo "▸ Compiling ($CONFIG)…"
 # -emit-const-values: the compiler writes down the App Intents (Shortcuts, Siri) so appintentsmetadataprocessor
@@ -114,6 +114,11 @@ pluginkit -a "$EXT" >/dev/null 2>&1 || true
 
 if [[ "${2:-}" == "--open" ]]; then
   # Only this copy: other Orca processes (e.g. snapshot renders from another folder) keep running.
-  pkill -f "$PWD/$APP/Contents/MacOS/OrcaFind" 2>/dev/null || true
+  # pkill reads its pattern as a regex, and this folder's name has brackets ("[ ORCA FIND ]"), which
+  # turned the path into a character class that matched nothing — the old copy kept running and `open`
+  # just brought it forward. Escape the path so it matches literally, and wait for it to quit.
+  PAT=$(printf '%s' "$PWD/$APP/Contents/MacOS/OrcaFind" | sed 's/[][\\.*^$+?(){}|]/\\&/g')
+  pkill -f "$PAT" 2>/dev/null || true
+  for _ in {1..20}; do pgrep -f "$PAT" >/dev/null || break; /bin/sleep 0.25; done
   open "$APP"
 fi

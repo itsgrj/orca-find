@@ -497,7 +497,7 @@ struct MenuBarView: View {
             if listening { VoiceLevelView(level: state.voice.level) }
             if !search.query.isEmpty {
                 Button { search.query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                    .buttonStyle(.plain).foregroundStyle(MenuLook.text2).handCursor()
+                    .buttonStyle(.plainHand).foregroundStyle(MenuLook.text2).handCursor()
             }
             if state.prefs.voiceEnabled {
                 Button {
@@ -507,7 +507,7 @@ struct MenuBarView: View {
                         .foregroundStyle(listening ? AnyShapeStyle(DS.critical) : MenuLook.text2)
                         .frame(width: 22, height: 22).contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).handCursor()
+                .buttonStyle(.plainHand).handCursor()
             }
         }
         .padding(.horizontal, 10).frame(height: 34)
@@ -537,7 +537,7 @@ struct MenuBarView: View {
                 .font(DS.bodySM).foregroundStyle(DS.link)
                 .padding(.horizontal, 14).padding(.vertical, 9).contentShape(Rectangle())
             }
-            .buttonStyle(.plain).handCursor()
+            .buttonStyle(.plainHand).handCursor()
         }
     }
 
@@ -610,7 +610,7 @@ struct MenuBarView: View {
             Text(count >= 150 ? "Your 150 newest downloads" : "That’s everything from the past month")
                 .foregroundStyle(MenuLook.text2)
             Button("See all downloads") { MenuBarController.shared.openApp { AppState.shared.navigate(.downloadedFrom(nil)) } }
-                .buttonStyle(.plain).foregroundStyle(DS.link).handCursor()
+                .buttonStyle(.plainHand).foregroundStyle(DS.link).handCursor()
             Spacer(minLength: 0)
         }
         .font(DS.caption)
@@ -623,7 +623,7 @@ struct MenuBarView: View {
             Spacer()
             if let trailing {
                 Button(trailing) { MenuBarController.shared.openApp { AppState.shared.navigate(.downloadedFrom(nil)) } }
-                    .buttonStyle(.plain).font(DS.bodySM).foregroundStyle(DS.link).handCursor()
+                    .buttonStyle(.plainHand).font(DS.bodySM).foregroundStyle(DS.link).handCursor()
             }
         }
         .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 6)
@@ -641,7 +641,7 @@ struct MenuBarView: View {
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(on ? AnyShapeStyle(DS.brand) : MenuLook.chip))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).handCursor()
+        .buttonStyle(.plainHand).handCursor()
     }
 
     @ViewBuilder private func rows(_ items: [FileItem], reasons: Bool) -> some View {
@@ -673,9 +673,9 @@ struct MenuBarView: View {
                     Text("\(Fmt.duration(state.player.position)) / \(Fmt.duration(state.player.duration))").font(DS.caption).foregroundStyle(MenuLook.text2)
                 }
                 Spacer()
-                Button { state.player.previous() } label: { Image(systemName: "backward.fill") }.buttonStyle(.plain).handCursor()
-                Button { state.player.toggle() } label: { Image(systemName: state.player.isPlaying ? "pause.fill" : "play.fill") }.buttonStyle(.plain).handCursor()
-                Button { state.player.next() } label: { Image(systemName: "forward.fill") }.buttonStyle(.plain).handCursor()
+                Button { state.player.previous() } label: { Image(systemName: "backward.fill") }.buttonStyle(.plainHand).handCursor()
+                Button { state.player.toggle() } label: { Image(systemName: state.player.isPlaying ? "pause.fill" : "play.fill") }.buttonStyle(.plainHand).handCursor()
+                Button { state.player.next() } label: { Image(systemName: "forward.fill") }.buttonStyle(.plainHand).handCursor()
             }
             .font(.system(size: 12)).foregroundStyle(MenuLook.text)
             .padding(.horizontal, 14).padding(.vertical, 8)
@@ -690,7 +690,7 @@ struct MenuBarView: View {
                     Text("Open OrcaFind")
                 }
             }
-            .buttonStyle(.plain).font(DS.bodySM).foregroundStyle(DS.link).handCursor()
+            .buttonStyle(.plainHand).font(DS.bodySM).foregroundStyle(DS.link).handCursor()
             Spacer()
             if state.prefs.menuShowCapture && state.prefs.capturesEnabled { MenuCaptureButton() }
             MenuGearButton()
@@ -713,7 +713,7 @@ private struct MenuCaptureButton: View {
             }
             .font(DS.bodySM).contentShape(Rectangle())
         }
-        .buttonStyle(.plain).handCursor()
+        .buttonStyle(.plainHand).handCursor()
         .onHover { h in
             task?.cancel()
             if h {
@@ -953,7 +953,7 @@ struct MenuToastView: View {
             Text(ui.toast?.message ?? "").font(DS.bodySM).foregroundStyle(MenuLook.text).lineLimit(1).truncationMode(.middle)
             if let undo = ui.toast?.undo {
                 Button("Undo") { MenuBarController.shared.hideToast(); undo() }
-                    .buttonStyle(.plain).font(DS.bodySM).foregroundStyle(DS.link).handCursor()
+                    .buttonStyle(.plainHand).font(DS.bodySM).foregroundStyle(DS.link).handCursor()
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)

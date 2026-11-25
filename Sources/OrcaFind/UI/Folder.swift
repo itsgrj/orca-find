@@ -204,7 +204,7 @@ struct GlassFolder: View {
             .frame(width: 200 * s, height: 168 * s, alignment: .topLeading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHand)
         .onHover { h in withAnimation(.spring(duration: 0.25)) { hovering = h } }
         .handCursor()
     }

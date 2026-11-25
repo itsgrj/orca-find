@@ -9,6 +9,9 @@ struct QueryChip: Identifiable, Hashable {
     /// Made by Apple Intelligence rather than by a phrase in the text (removing it can't edit the text).
     var isGuess = false
     var id: String { kind.rawValue + ":" + label }
+    /// The label in quotes for a sentence like "Remove “pdfs”". Word chips already carry their own quotes,
+    /// so they aren't wrapped twice (that showed as "Remove "“grs”"").
+    var quoted: String { label.hasPrefix("“") || label.hasPrefix("\"") ? label : "“\(label)”" }
 }
 
 /// Something the file should look like, matched against what Orca saw in pictures (Vision labels),
@@ -703,10 +706,12 @@ enum QueryParser {
             }
             let stemmed = SearchEngine.stem(w)
             var labels = VisualAnalyzer.aliases[w] ?? VisualAnalyzer.aliases[stemmed] ?? []
-            if labels.isEmpty, vocab.contains(stemmed), !VisualAnalyzer.generic.contains(stemmed) { labels = [stemmed] }
+            // "sunglasses", "jeans": labels that end in s are looked up as written, not stemmed.
+            let label = vocab.contains(stemmed) ? stemmed : (vocab.contains(w) ? w : nil)
+            if labels.isEmpty, let label, !VisualAnalyzer.generic.contains(label) { labels = [label] }
             if !labels.isEmpty {
                 let r = matches[i].range
-                c.q.looks.append(LookTerm(word: stemmed, labels: labels, ranges: [r]))
+                c.q.looks.append(LookTerm(word: labels == [w] ? w : stemmed, labels: labels, ranges: [r]))
                 c.work.replaceCharacters(in: r, with: String(repeating: " ", count: r.length))
             }
             i += 1

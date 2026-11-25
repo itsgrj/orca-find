@@ -34,7 +34,7 @@ private struct SkillState: View {
     var ai = PrivateAI.shared
     var body: some View {
         switch ai.state(skill) {
-        case .unlocked: Badge("Unlocked ✓", tone: .success)
+        case .unlocked: Badge("Added ✓", tone: .success)
         case .unlocking(let f):
             VStack(alignment: .trailing, spacing: 4) {
                 Text(f <= 0.001 ? "Waiting…" : "\(Int(f * 100))% of \(skill.sizeLabel)").font(DS.caption).foregroundStyle(DS.text2)
@@ -66,7 +66,7 @@ struct PrivateAIOnboarding: View {
                 Circle().fill(DS.text).frame(width: 8, height: 8)
                 Text("Private AI").font(DS.bodySM).foregroundStyle(DS.text)
             }
-            Text("Unlock Orca’s private AI").font(DS.display).foregroundStyle(DS.text)
+            Text("Add Orca’s private AI").font(DS.display).foregroundStyle(DS.text)
             Text("Orca can understand your photos, erase things from them and hear you clearly. Most apps upload your files to do this. Orca does it all on this Mac, so it needs a one-time download.")
                 .font(DS.body).foregroundStyle(DS.text2).fixedSize(horizontal: false, vertical: true)
             BeforeAfter()
@@ -90,7 +90,7 @@ struct PrivateAIOnboarding: View {
                         .padding(.horizontal, 14).padding(.vertical, 12)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain).disabled(ai.isUnlocked(s) || ai.isWorking(s))
+                    .buttonStyle(.plainHand).disabled(ai.isUnlocked(s) || ai.isWorking(s))
                     if i < offered.count - 1 { Rectangle().fill(DS.border).frame(height: 1) }
                 }
             }
@@ -117,7 +117,7 @@ struct PrivateAIOnboarding: View {
     private var buttonTitle: String {
         let n = picked.filter { !ai.isUnlocked($0) }.count
         if n == 0 { return "Start searching" }
-        return n == offered.filter { !ai.isUnlocked($0) }.count ? "Unlock all & start" : "Unlock \(n) & start"
+        return n == offered.filter { !ai.isUnlocked($0) }.count ? "Add all & start" : "Add \(n) & start"
     }
 
     private func toggle(_ s: PrivateAI.Skill) {
@@ -173,7 +173,7 @@ private struct BeforeAfter: View {
     }
 }
 
-// MARK: - Top bar: "Unlocking AI · 62%"
+// MARK: - Top bar: "Adding AI · 62%"
 
 struct PrivateAIPill: View {
     var ai = PrivateAI.shared
@@ -187,13 +187,13 @@ struct PrivateAIPill: View {
                         Circle().trim(from: 0, to: max(0.03, ai.overallProgress)).stroke(unlockPurple, style: StrokeStyle(lineWidth: 2.5, lineCap: .round)).rotationEffect(.degrees(-90))
                     }
                     .frame(width: 13, height: 13)
-                    Text("Unlocking AI · \(Int(ai.overallProgress * 100))%").font(DS.caption).foregroundStyle(DS.onDark)
+                    Text("Adding AI · \(Int(ai.overallProgress * 100))%").font(DS.caption).foregroundStyle(DS.onDark)
                 }
                 .padding(.horizontal, 10).padding(.vertical, 5)
                 .background(Capsule().fill(DS.topbarField))
                 .contentShape(Capsule())
             }
-            .buttonStyle(.plain).handCursor()
+            .buttonStyle(.plainHand).handCursor()
             .popover(isPresented: $open, arrowEdge: .bottom) { PrivateAIPopover().environment(AppState.shared) }
             .help("Orca’s private AI is downloading")
         }
@@ -212,7 +212,7 @@ private struct PrivateAIPopover: View {
                     SkillState(skill: s, compact: true)
                     if ai.isWorking(s) {
                         Button { ai.cancel(s) } label: { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(DS.text2) }
-                            .buttonStyle(.plain).help("Stop")
+                            .buttonStyle(.plainHand).help("Stop")
                     }
                 }
             }
@@ -244,14 +244,14 @@ struct PrivateAIReminder: View {
                         Badge("Recommended", tone: .magic)
                     }
                     Text(skills.count > 1
-                         ? "Unlock photo understanding and the Pro eraser: search what’s inside your pictures, remove things in one stroke. Private, on this Mac. One time, \(Fmt.size(size))."
+                         ? "Add photo understanding and the Pro eraser: search what’s inside your pictures, remove things in one stroke. Private, on this Mac. One time, \(Fmt.size(size))."
                          : "\(skills[0].pitch) Private, on this Mac. One time, \(Fmt.size(size)).")
                         .font(DS.caption).foregroundStyle(DS.text2).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 12)
                 Button("Don’t remind me") { ai.reminderNever() }.buttonStyle(.plainP)
                 Button("Maybe later") { ai.reminderLater() }.buttonStyle(.secondary)
-                Button(skills.count > 1 ? "Unlock both" : "Unlock") { ai.unlock(skills) }.buttonStyle(.primary)
+                Button(skills.count > 1 ? "Add both" : "Add") { ai.unlock(skills) }.buttonStyle(.primary)
             }
             .padding(14)
             .frame(maxWidth: 1000)
@@ -304,7 +304,7 @@ struct PrivateAISettings: View {
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.border))
             }
             Toggle(isOn: Binding(get: { ai.remindersOn }, set: { ai.remindersOn = $0 })) {
-                Text("Remind me about skills I haven’t unlocked").font(DS.body).foregroundStyle(DS.text)
+                Text("Remind me about AI features I haven’t added").font(DS.body).foregroundStyle(DS.text)
             }
             .toggleStyle(.switch)
             HStack(spacing: 8) {
@@ -323,7 +323,7 @@ struct PrivateAISettings: View {
         switch ai.state(s) {
         case .unlocked:
             HStack(spacing: 8) {
-                Badge("Unlocked · \(s.sizeLabel)", tone: .success)
+                Badge("Added · \(s.sizeLabel)", tone: .success)
                 Button("Remove") { ai.remove(s) }.buttonStyle(.plainP)
             }
         case .unlocking, .preparing:
@@ -337,7 +337,7 @@ struct PrivateAISettings: View {
                 Button("Try again") { ai.unlock([s]) }.buttonStyle(.primary)
             }
         case .locked:
-            Button("Unlock · \(s.sizeLabel)") { ai.unlock([s]) }.buttonStyle(.primary)
+            Button("Add · \(s.sizeLabel)") { ai.unlock([s]) }.buttonStyle(.primary)
         }
     }
 }

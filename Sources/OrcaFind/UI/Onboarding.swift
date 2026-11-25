@@ -108,7 +108,7 @@ private struct OnboardingDemo: View {
                 .padding(.horizontal, 10).padding(.vertical, 4)
                 .background(Capsule().fill(on ? DS.brand : .clear))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHand)
     }
 
     private var list: some View {
@@ -171,7 +171,7 @@ private struct OnboardingLook: View {
                                         Text(b.title).font(DS.caption).foregroundStyle(p.background == b ? DS.text : DS.text2).lineLimit(1)
                                     }
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.plainHand)
                             }
                         }
                     }

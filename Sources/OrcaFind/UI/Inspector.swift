@@ -53,7 +53,7 @@ struct InspectorPanel: View {
                     Button { state.player.play(item, in: state.visibleItems) } label: {
                         Image(systemName: "play.fill").font(.system(size: 16)).foregroundStyle(DS.onBrand)
                             .frame(width: 44, height: 44).background(Circle().fill(DS.brand))
-                    }.buttonStyle(.plain).padding(12)
+                    }.buttonStyle(.plainHand).padding(12)
                 }
             case .documents:
                 Thumb(item: item, size: 600, mode: .page).frame(height: 240).background(Color.white)

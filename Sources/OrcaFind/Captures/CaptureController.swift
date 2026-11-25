@@ -110,6 +110,8 @@ final class CaptureSession {
     var keepsClip: Bool { clip != nil && (clipChoice ?? clipMoving) }
     /// How tall the words may get before the strip scrolls (set from the space left on screen).
     var stripMaxText: CGFloat = 360
+    /// "Add more" on the Saved card: this session's words go on the end of that capture's note.
+    var addingTo: Capture?
 
     init(image: CGImage, pointSize: CGSize, context: CaptureContext) {
         self.image = image
@@ -142,12 +144,22 @@ final class CaptureController {
     private var savedTask: Task<Void, Never>?
     /// The strip hangs below the grab and grows downward; above or over the grab it grows upward.
     private var stripGrowsDown = true
+    /// Clicks anywhere but the grab and the strip end the capture.
+    private var clickMonitors: [Any] = []
+    /// The work Orca does after a capture is saved (better words, text in the picture, tags), per capture.
+    /// "Add more" waits for it, so the two never write over each other.
+    private var processing: [String: Task<Void, Never>] = [:]
 
     var isBusy: Bool { session != nil || RegionGrabber.shared.isActive }
 
     // MARK: 1 · Grab
 
     func start() {
+        // The capture hotkey again while talking (or typing) means "done".
+        if let s = session {
+            if s.mode != .saving { finish() }
+            return
+        }
         guard !isBusy else { return }
         guard ScreenGrab.hasPermission else {
             ScreenGrab.requestPermission()
@@ -323,11 +335,14 @@ final class CaptureController {
     }
 
     func cancel() {
-        guard let s = session else { return }
+        guard let s = session, s.mode != .saving else { return }
         s.recorder.stop()
         if let clip = s.clip { Task { _ = await clip.stop(); clip.discard() } }
         try? FileManager.default.removeItem(at: CaptureStore.folder.appendingPathComponent("\(s.id).m4a"))
+        let frame = strip?.frame
         teardown()
+        // Esc while adding more drops only the new words; the capture and its Saved card come back.
+        if let target = s.addingTo, let c = CaptureLibrary.shared.capture(target.id) { showSaved(c, near: frame) }
     }
 
     // MARK: 3 · Save
@@ -340,6 +355,10 @@ final class CaptureController {
         let note = (typedMode ? s.typed : s.recorder.transcript).trimmingCharacters(in: .whitespacesAndNewlines)
         let spokeSeconds = typedMode ? 0 : (s.recorder.heardSpeech ? duration : 0)
         let wasTyped = typedMode && !s.typed.isEmpty
+        if let target = s.addingTo {
+            finishAdding(s, to: target.id, words: note, spokeSeconds: spokeSeconds, typed: typedMode)
+            return
+        }
 
         var c = Capture(id: s.id, created: Date())
         c.note = note
@@ -372,7 +391,7 @@ final class CaptureController {
         let sharedText = s.shared?.kind == .text ? s.shared?.text : nil
         if let sh = s.shared {
             if sh.kind == .file { c.filePath = sh.path }
-            if let t = sharedText { c.ocr = t }
+            if let t = sharedText { c.ocr = t; c.textShared = true }
         }
 
         let image = s.image
@@ -390,7 +409,7 @@ final class CaptureController {
         // Listen to the whole recording again right away (well under a second), while the rest runs.
         let relisten: Task<(text: String, source: NoteTranscriber.Source)?, Never>? =
             c.audioSeconds > 0 && !c.noteTyped ? Task { @MainActor in await NoteTranscriber.listen(c.audioURL, live: note) } : nil
-        Task { @MainActor in
+        let work = Task { @MainActor in
             var c = c
             var reminderTask = reminderTask
             // Better words first, so the toast, title, tags and reminder all use what was really said.
@@ -403,7 +422,7 @@ final class CaptureController {
                 } else {
                     c.noteSource = source.rawValue
                 }
-                CaptureLibrary.shared.update(c)
+                _ = CaptureController.store(c)   // the clip below still has to be stopped either way
             }
             if let clip {
                 let seconds = await clip.stop()
@@ -413,7 +432,7 @@ final class CaptureController {
                     clip.discard()
                     c.clipSeconds = nil
                 }
-                CaptureLibrary.shared.update(c)
+                guard CaptureController.store(c) else { clip.discard(); return }
             }
             if !pageDone, let pending {
                 await pending.value
@@ -426,7 +445,7 @@ final class CaptureController {
             if fromBrowser { CaptureController.offerPageAccess() }
             // Shared text is already the words themselves; everything else is read from its picture.
             var text = sharedText ?? ""
-            if sharedText == nil { text = await Task.detached(priority: .utility) { TextExtractor.recognize(image) }.value }
+            if sharedText == nil { text = await Task.detached(priority: .utility) { TextExtractor.recognizeCloseUp(image) }.value }
             c.ocr = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if s.pageTitle == nil && CaptureContext.cleanTitle(s.context.windowTitle) == nil && c.note.isEmpty {
                 c.title = CaptureContext.title(page: nil, window: nil, note: "", ocr: c.ocr, app: c.sourceApp)
@@ -438,19 +457,167 @@ final class CaptureController {
                     c.addTag(t, origin: "orca")
                 }
             }
-            CaptureLibrary.shared.update(c)
+            guard CaptureController.store(c) else { return }
             if let due = c.reminderDate {
                 let title = reminderTask ?? (c.title.isEmpty ? "Look at your capture" : c.title)
                 var notes = c.note
                 if let link = c.links.first { notes += "\n\n" + link }
                 if let id = await RemindersBridge.add(title: title, notes: notes, due: due, link: c.deepLink) {
                     c.reminderID = id
-                    CaptureLibrary.shared.update(c)
+                    guard CaptureController.store(c) else { return }
                 } else {
                     AppState.shared.showToast("Saved, but Reminders access is off — turn it on in System Settings › Privacy & Security › Reminders")
                 }
             }
         }
+        track(work, for: c.id)
+    }
+
+    /// Saves what background work found, unless the capture was undone or deleted meanwhile (saving would bring it back).
+    @discardableResult
+    static func store(_ c: Capture) -> Bool {
+        guard CaptureStore.shared.get(c.id) != nil else { return false }
+        CaptureLibrary.shared.update(c)
+        return true
+    }
+
+    private func track(_ work: Task<Void, Never>, for id: String) {
+        processing[id] = work
+        Task { @MainActor [weak self] in
+            await work.value
+            if self?.processing[id] == work { self?.processing[id] = nil }
+        }
+    }
+
+    // MARK: 3b · Add more (from the Saved card)
+
+    /// The strip comes back where the Saved card was, already listening; what's said goes on the end of the same capture.
+    func addMore(to id: String) {
+        guard !isBusy, let c = CaptureLibrary.shared.capture(id) else { return }
+        let card = savedPanel?.frame
+        hideSaved()
+        let s = CaptureSession(image: CaptureController.picture(of: c), pointSize: CGSize(width: c.width, height: c.height),
+                               context: CaptureContext())
+        s.addingTo = c
+        s.pageDone = true
+        session = s
+        let screen = card.flatMap { f in NSScreen.screens.first { $0.frame.intersects(f) } } ?? NSScreen.main ?? NSScreen.screens[0]
+        let vis = screen.visibleFrame
+        let f = card ?? NSRect(x: vis.maxX - 476, y: vis.minY + 16, width: 460, height: 112)
+        // showStrip hangs the strip 10 pt under the box it's given: this puts its top edge where the card's was.
+        showStrip(for: NSRect(x: f.minX, y: f.maxY + 10, width: f.width, height: 0), on: screen, spotlight: false)
+        Task { await beginRecording(s) }
+    }
+
+    private static func picture(of c: Capture) -> CGImage {
+        if let img = CaptureThumbs.image(c.id, maxPixel: 1200)?.cgImage(forProposedRect: nil, context: nil, hints: nil) { return img }
+        let ctx = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        return ctx.makeImage()!
+    }
+
+    private func finishAdding(_ s: CaptureSession, to id: String, words: String, spokeSeconds: TimeInterval, typed: Bool) {
+        let piece = CaptureStore.folder.appendingPathComponent("\(s.id).m4a")
+        let frame = strip?.frame
+        guard !words.isEmpty else {
+            // Nothing new was said: the card comes back as it was.
+            try? FileManager.default.removeItem(at: piece)
+            teardown()
+            if let c = CaptureLibrary.shared.capture(id) { showSaved(c, near: frame) }
+            return
+        }
+        let before = processing[id]
+        let work = Task { @MainActor [weak self] in
+            // The first save's background work goes first, so it can't write the old note back over this one.
+            // (Usually long done by now; the strip says "Saving…" meanwhile.)
+            await before?.value
+            @MainActor func done() { if let self, self.session === s { self.teardown() } }
+            guard var c = CaptureStore.shared.get(id) else {
+                try? FileManager.default.removeItem(at: piece); done(); return
+            }
+            let earlier = c.note
+            let voiceNote = !c.noteTyped && c.audioSeconds > 0 && FileManager.default.fileExists(atPath: c.audioURL.path)
+            c.note = CaptureController.joinNote(earlier, words)
+            if earlier.isEmpty, c.title == CaptureContext.title(page: nil, window: nil, note: "", ocr: c.ocr, app: c.sourceApp) {
+                c.title = CaptureContext.title(page: nil, window: nil, note: c.note, ocr: c.ocr, app: c.sourceApp)
+            }
+            // The recording grows with the note, so listening again later hears all of it.
+            var listenAgain = false
+            if spokeSeconds > 0, FileManager.default.fileExists(atPath: piece.path) {
+                if voiceNote {
+                    if await AudioJoin.append(piece, to: c.audioURL) { c.audioSeconds += spokeSeconds; listenAgain = true }
+                    else { c.noteTyped = true }   // the recording no longer has every word; never re-listen over it
+                } else if c.audioSeconds == 0 || !FileManager.default.fileExists(atPath: c.audioURL.path) {
+                    try? FileManager.default.removeItem(at: c.audioURL)
+                    if (try? FileManager.default.moveItem(at: piece, to: c.audioURL)) != nil {
+                        c.audioSeconds = spokeSeconds
+                        listenAgain = earlier.isEmpty   // a typed note keeps its words; the recording is just extra
+                        if earlier.isEmpty { c.noteTyped = false }
+                    }
+                }
+            } else if typed && voiceNote {
+                c.noteTyped = true   // typed words aren't in the recording; listening again would lose them
+            }
+            try? FileManager.default.removeItem(at: piece)
+
+            let lib = CaptureLibrary.shared
+            let intent = SpokenIntent.parse(words, existing: lib.collections.map(\.name), existingTags: lib.tagNames)
+            if c.collection == nil, let col = intent.collection { c.collection = col; c.collectionPhrase = intent.collectionPhrase }
+            for t in intent.tags { c.addTag(t, origin: "said") }
+            for t in CaptureTags.mentioned(in: words, existing: lib.tagNames) { c.addTag(t, origin: "orca") }
+            var reminderTask: String?
+            var newReminder = false
+            if c.reminderDate == nil, let due = intent.reminderDate {
+                c.reminderDate = due; c.reminderPhrase = intent.reminderPhrase
+                reminderTask = intent.reminderTask; newReminder = true
+            }
+            guard CaptureController.store(c) else { done(); return }
+            done()
+            self?.showSaved(c, near: frame)
+
+            // Then the same quiet clean-up as a first save: better words over the whole recording, a tag or two, the reminder.
+            if listenAgain, let (text, source) = await NoteTranscriber.listen(c.audioURL, live: c.note) {
+                if NoteTranscriber.accept(text, over: c.note) {
+                    if let task = NoteTranscriber.apply(text, source, to: &c, reminders: true) {
+                        reminderTask = task.isEmpty ? nil : task; newReminder = true
+                    }
+                } else {
+                    c.noteSource = source.rawValue
+                }
+                guard CaptureController.store(c) else { return }
+            }
+            if Preferences.shared.captureAutoTags, c.tagList.count < 3 {
+                for t in await CaptureTags.suggest(note: c.note, title: c.title, ocr: c.ocr, collection: c.collection,
+                                                   existing: CaptureLibrary.shared.tagNames) {
+                    c.addTag(t, origin: "orca")
+                }
+                guard CaptureController.store(c) else { return }
+            }
+            if newReminder, let due = c.reminderDate {
+                let title = reminderTask ?? (c.title.isEmpty ? "Look at your capture" : c.title)
+                var notes = c.note
+                if let link = c.links.first { notes += "\n\n" + link }
+                if let rid = await RemindersBridge.add(title: title, notes: notes, due: due, link: c.deepLink) {
+                    c.reminderID = rid
+                    CaptureController.store(c)
+                } else {
+                    AppState.shared.showToast("Saved, but Reminders access is off — turn it on in System Settings › Privacy & Security › Reminders")
+                }
+            }
+        }
+        track(work, for: id)
+    }
+
+    /// "Sort of sci-fi" + "and it's for the newsletter" → "Sort of sci-fi. And it's for the newsletter".
+    nonisolated static func joinNote(_ earlier: String, _ more: String) -> String {
+        var a = earlier.trimmingCharacters(in: .whitespacesAndNewlines)
+        var b = more.trimmingCharacters(in: .whitespacesAndNewlines)
+        if a.isEmpty { return b }
+        if b.isEmpty { return a }
+        while let last = a.last, ",;:-–—".contains(last) { a.removeLast() }
+        if let first = b.first, first.isLowercase { b = first.uppercased() + b.dropFirst() }
+        let ended = a.last.map { ".!?…".contains($0) } ?? false
+        return a + (ended ? " " : ". ") + b
     }
 
     /// The first time something is grabbed from a browser without Accessibility allowed, say once what it adds
@@ -483,9 +650,27 @@ final class CaptureController {
         }
     }
 
+    /// Reads the picture again with the close-up pass, for captures saved before it existed.
+    static func readTextAgain(_ id: String) {
+        guard let c = CaptureLibrary.shared.capture(id), c.textShared != true,
+              let image = TextExtractor.loadCGImage(c.imageURL, maxPixel: 6000) else { return }
+        AppState.shared.showToast("Reading the picture again…")
+        Task { @MainActor in
+            let text = await Task.detached(priority: .userInitiated) { TextExtractor.recognizeCloseUp(image) }.value
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard var fresh = CaptureLibrary.shared.capture(id) else { return }
+            guard !text.isEmpty else { AppState.shared.showToast("Orca couldn’t find any text in the picture"); return }
+            fresh.ocr = text
+            CaptureLibrary.shared.update(fresh)
+            AppState.shared.showToast("Updated the text Orca read")
+        }
+    }
+
     private func teardown() {
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
+        clickMonitors.forEach(NSEvent.removeMonitor)
+        clickMonitors = []
         strip?.orderOut(nil); strip = nil
         outline?.orderOut(nil); outline = nil
         session = nil
@@ -573,6 +758,30 @@ final class CaptureController {
             }
             return handled ? nil : e
         }
+        watchClicksOutside(keep: spotlight ? rect : nil)
+    }
+
+    /// A click anywhere outside the grabbed box and the strip means "done" (same as Return). The click still
+    /// goes through to whatever was clicked. Clicks inside the box are left alone (pausing a video, say).
+    private func watchClicksOutside(keep box: NSRect?) {
+        let shown = Date()
+        let mask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if let m = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] _ in
+            MainActor.assumeIsolated { self?.clickedOutside(box: box, since: shown) }
+        }) { clickMonitors.append(m) }
+        // Clicks in Orca's own windows (the main window, say) don't reach a global monitor.
+        if let m = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] e in
+            MainActor.assumeIsolated { self?.clickedOutside(box: box, since: shown) }
+            return e
+        }) { clickMonitors.append(m) }
+    }
+
+    private func clickedOutside(box: NSRect?, since shown: Date) {
+        guard let s = session, s.mode != .saving, Date().timeIntervalSince(shown) > 0.3 else { return }
+        let p = NSEvent.mouseLocation
+        if let f = strip?.frame, f.contains(p) { return }
+        if let box, box.insetBy(dx: -2, dy: -2).contains(p) { return }
+        finish()
     }
 
     /// Grows (or shrinks) the strip to fit what's been said, keeping the edge next to the grab still.
@@ -590,7 +799,7 @@ final class CaptureController {
 
     private func showSaved(_ c: Capture, near frame: NSRect?) {
         hideSaved()
-        let size = NSSize(width: 380, height: 112)
+        let size = NSSize(width: 440, height: 112)
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
         let vis = screen?.visibleFrame ?? .zero
         var origin = NSPoint(x: vis.maxX - size.width - 16, y: vis.minY + 16)
@@ -605,6 +814,8 @@ final class CaptureController {
         let view = SavedCardView(captureID: c.id, undo: { [weak self] in
             if let c = CaptureLibrary.shared.capture(c.id) { CaptureLibrary.shared.delete(c, keep: false) }
             self?.hideSaved()
+        }, addMore: { [weak self] in
+            self?.addMore(to: c.id)
         }, open: { [weak self] in
             self?.hideSaved()
             AppState.shared.openMainWindow()
@@ -617,7 +828,8 @@ final class CaptureController {
         p.contentView = NSHostingView(rootView: view)
         p.orderFrontRegardless()
         savedPanel = p
-        scheduleSavedHide(after: 3)
+        // Long enough to read it and reach Undo or Add more; hovering keeps it up.
+        scheduleSavedHide(after: 5)
     }
 
     private func scheduleSavedHide(after seconds: Double) {
@@ -666,7 +878,8 @@ struct CaptureStripView: View {
                 switch session.mode {
                 case .recording:
                     Circle().fill(Color(hex: 0xFF453A)).frame(width: 7, height: 7)
-                    Text(session.keepsClip ? "Recording clip" : "Recording").font(DS.caption).foregroundStyle(DS.onDark)
+                    Text(session.addingTo != nil ? "Adding more" : session.keepsClip ? "Recording clip" : "Recording")
+                        .font(DS.caption).foregroundStyle(DS.onDark)
                     Text(Self.clock(r.elapsed)).font(DS.caption).foregroundStyle(DS.onDark2).monospacedDigit()
                     Waveform(levels: session.keepsClip ? Array(r.levels.suffix(16)) : r.levels)
                         .frame(width: session.keepsClip ? 76 : 130, height: 16)
@@ -704,6 +917,11 @@ struct CaptureStripView: View {
                     .background(Capsule().fill(Color.white.opacity(0.1)))
                 }
             }
+            if let earlier = session.addingTo?.note, !earlier.isEmpty {
+                // What's already saved, dimmed, so it's clear the new words go on the end.
+                Text("“\(earlier)”").font(DS.bodySM).foregroundStyle(DS.onDark2).lineLimit(2).truncationMode(.head)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             Group {
                 if session.mode == .typing {
                     TextField("", text: $session.typed, axis: .vertical)
@@ -713,11 +931,11 @@ struct CaptureStripView: View {
                         .focused($typingFocused)
                         .background(alignment: .topLeading) {
                             if session.typed.isEmpty {
-                                Text("Why are you saving this?").font(DS.px(15)).foregroundStyle(DS.onDark2).allowsHitTesting(false)
+                                Text(session.addingTo != nil ? "Add more about it…" : "Why are you saving this?").font(DS.px(15)).foregroundStyle(DS.onDark2).allowsHitTesting(false)
                             }
                         }
                 } else if r.transcript.isEmpty {
-                    Text("Say why you’re saving this…").font(DS.px(15)).foregroundStyle(DS.onDark2)
+                    Text(session.addingTo != nil ? "Say more about it…" : "Say why you’re saving this…").font(DS.px(15)).foregroundStyle(DS.onDark2)
                 } else {
                     // Every word stays visible: the strip grows, and scrolls (pinned to the newest words)
                     // only once it reaches the edge of the screen.
@@ -756,7 +974,8 @@ struct CaptureStripView: View {
                 hint("return", "save"); hint("⌘V", "attach link"); hint("esc", "cancel")
             } else {
                 if !compact { hint(nil, "stop talking to save") }
-                if session.clip != nil { hint("v", session.keepsClip ? "picture only" : "keep clip") } else { hint("return", "done") }
+                if session.clip != nil { hint("v", session.keepsClip ? "picture only" : "keep clip") }
+                hint("return", "done")
                 hint("tab", compact ? "type" : "type instead"); hint("esc", "cancel")
             }
             Spacer(minLength: 0)
@@ -823,11 +1042,13 @@ struct Waveform: View {
     }
 }
 
-/// V4: "Saved to Newsletter" — gone after 3 seconds, Undo, click to open.
+/// V4: "Saved to Newsletter" — gone after 5 seconds, Add more, Undo, click to open.
 struct SavedCardView: View {
     @Environment(CaptureLibrary.self) private var library
     let captureID: String
     let undo: () -> Void
+    /// Listen again and put what's said on the end of this capture.
+    var addMore: () -> Void = {}
     let open: () -> Void
     let hover: (Bool) -> Void
 
@@ -840,8 +1061,18 @@ struct SavedCardView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Color(hex: 0x34C759)).font(.system(size: 12))
                     Text(savedTitle(c)).font(DS.body).foregroundStyle(.white).lineLimit(1)
-                    Spacer()
-                    Button("Undo", action: undo).buttonStyle(.plain).font(DS.bodySM).foregroundStyle(.white)
+                    Spacer(minLength: 4)
+                    Button(action: addMore) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "mic.fill").font(.system(size: 10))
+                            Text("Add more")
+                        }
+                    }
+                    .buttonStyle(.plainHand).font(DS.bodySM).foregroundStyle(.white).fixedSize()
+                    .padding(.horizontal, 8).padding(.vertical, 3)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.15)))
+                    .help("Say more about it")
+                    Button("Undo", action: undo).buttonStyle(.plainHand).font(DS.bodySM).foregroundStyle(.white).fixedSize()
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.15)))
                 }

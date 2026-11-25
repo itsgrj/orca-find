@@ -158,12 +158,12 @@ struct BrowseScreen: View {
 
     @ViewBuilder private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Button("Library") { state.navigate(.library) }.buttonStyle(.plain).font(DS.body).foregroundStyle(DS.text2)
+            Button("Library") { state.navigate(.library) }.buttonStyle(.plainHand).font(DS.body).foregroundStyle(DS.text2)
             if case .folder(let path) = state.section {
                 ForEach(crumbs(path), id: \.1) { name, p in
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(DS.text3)
                     if p == path { Text(name).font(DS.headingLG).foregroundStyle(DS.text) }
-                    else { Button(name) { state.navigate(.folder(p)) }.buttonStyle(.plain).font(DS.body).foregroundStyle(DS.text2) }
+                    else { Button(name) { state.navigate(.folder(p)) }.buttonStyle(.plainHand).font(DS.body).foregroundStyle(DS.text2) }
                 }
             } else {
                 Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(DS.text3)
@@ -178,7 +178,7 @@ struct BrowseScreen: View {
                 Menu { SmartFolderMenu(folder: f, includeOpen: false) } label: {
                     Image(systemName: "ellipsis").font(.system(size: 13, weight: .semibold)).foregroundStyle(DS.text).frame(width: 28, height: 28)
                 }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().help("More")
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor().help("More")
             }
         }
     }
@@ -215,9 +215,12 @@ struct FileTable: View {
     @Environment(AppState.self) private var state
     let items: [FileItem]
     @State private var order: [KeyPathComparator<FileItem>] = []
+    @State private var folderLabels = FolderLabels.Cache()
 
     var body: some View {
         @Bindable var st = state
+        // Files with the same name get as much of their path as it takes to tell them apart.
+        let clashing = folderLabels.labels(for: items)
         Table(of: FileItem.self, selection: $st.selection, sortOrder: $order) {
             TableColumn("Name", value: \.name) { item in
                 HStack(spacing: 8) {
@@ -226,10 +229,18 @@ struct FileTable: View {
                     Text(item.name).font(DS.body).lineLimit(1).truncationMode(.middle)
                 }
             }
-            .width(min: 240, ideal: 360)
-            TableColumn("Kind", value: \.kindName) { Text($0.kindName).font(DS.bodySM).foregroundStyle(DS.text2) }.width(min: 80, ideal: 130)
-            TableColumn("Size", value: \.size) { Text($0.isFolder ? "—" : Fmt.size($0.size)).font(DS.bodySM).foregroundStyle(DS.text2) }.width(min: 60, ideal: 80)
-            TableColumn("Date", value: \.sortDate) { Text(Fmt.date($0.activityDate)).font(DS.bodySM).foregroundStyle(DS.text2) }.width(min: 110, ideal: 150)
+            .width(min: 220, ideal: 300)
+            // Not sortable: sorting goes through the Sort menu, which has no folder order.
+            TableColumn("Folder") { item in
+                Text(clashing[item.id] ?? FolderLabels.plain(for: item))
+                    .font(DS.bodySM).secondaryText().lineLimit(1).truncationMode(.middle)
+                    .help(item.shortPath)
+            }
+            .width(min: 90, ideal: 160)
+            // .secondaryText(), not DS.text2: a fixed grey vanishes on the blue selected row.
+            TableColumn("Kind", value: \.kindName) { Text($0.kindName).font(DS.bodySM).secondaryText() }.width(min: 80, ideal: 130)
+            TableColumn("Size", value: \.size) { Text($0.isFolder ? "—" : Fmt.size($0.size)).font(DS.bodySM).secondaryText() }.width(min: 60, ideal: 80)
+            TableColumn("Date", value: \.sortDate) { Text(Fmt.date($0.activityDate)).font(DS.bodySM).secondaryText() }.width(min: 110, ideal: 150)
             TableColumn("From", value: \.sourceName) { item in
                 if let s = item.source { Badge(s.name, tone: .info) } else { Text("") }
             }
@@ -267,14 +278,14 @@ struct RecentsScreen: View {
         let groups = Self.group(items)
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                Button("Library") { state.navigate(.library) }.buttonStyle(.plain).font(DS.body).foregroundStyle(DS.text2)
+                Button("Library") { state.navigate(.library) }.buttonStyle(.plainHand).font(DS.body).foregroundStyle(DS.text2)
                 Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(DS.text3)
                 Text("Recents").font(DS.headingLG).foregroundStyle(DS.text)
                 Text("\(Fmt.plural(items.count, "file")) in the last 30 days").font(DS.body).foregroundStyle(DS.text2)
                 Spacer()
                 ForEach([nil, FileCategory.images, .videos, .documents, .music, .archives], id: \.self) { k in
                     Button { kind = k } label: { Chip(label: k?.title ?? "All", symbol: k.map(KindPalette.symbol) ?? "square.grid.2x2", style: kind == k ? .selected : .normal) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHand)
                 }
             }
             GeometryReader { geo in

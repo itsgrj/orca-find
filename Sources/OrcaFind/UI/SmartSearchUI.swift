@@ -34,7 +34,7 @@ struct LookEditor: View {
                 FlowLayout(spacing: 6) {
                     ForEach(related, id: \.self) { r in
                         Button { apply(VisualAnalyzer.display(r)) } label: { Badge(VisualAnalyzer.display(r)) }
-                            .buttonStyle(.plain).handCursor()
+                            .buttonStyle(.plainHand).handCursor()
                     }
                 }
             }
@@ -78,7 +78,7 @@ struct LookEditor: View {
             .foregroundStyle(tint)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).handCursor()
+        .buttonStyle(.plainHand).handCursor()
     }
 }
 
@@ -104,7 +104,7 @@ struct WaysOutView: View {
                         Button("Search “\(t.word)” in text — \(Fmt.count(t.count))") { state.lookAsText(chip) }.buttonStyle(.secondary)
                     }
                     ForEach(q.chips.filter { $0.kind != .type && $0.kind != .looks }.suffix(2)) { c in
-                        Button("Remove “\(c.label)”") { state.removeChip(c) }.buttonStyle(.secondary)
+                        Button("Remove \(c.quoted)") { state.removeChip(c) }.buttonStyle(.secondary)
                     }
                 }
                 if ways == nil {

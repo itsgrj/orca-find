@@ -124,7 +124,7 @@ struct RecentlyRemovedScreen: View {
                     Chip(label: counts ? "\(f.title) · \(list.filter(f.matches).count)" : f.title,
                          style: filter == f ? .selected : .normal)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.plainHand)
             }
         }
     }
@@ -167,7 +167,7 @@ private struct ViewSwitch: View {
                 .shadow(color: .black.opacity(on ? 0.12 : 0), radius: 1, y: 1))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).handCursor()
+        .buttonStyle(.plainHand).handCursor()
     }
 }
 
@@ -179,9 +179,10 @@ private struct RemovedSearchField: View {
             Image(systemName: "magnifyingglass").font(.system(size: 12)).foregroundStyle(DS.text3)
             TextField("", text: $text, prompt: Text("Search removed things").foregroundColor(DS.text3))
                 .textFieldStyle(.plain).font(DS.body).foregroundStyle(DS.text).focused($focused)
+                .help(text)
             if !text.isEmpty {
                 Button { text = "" } label: { Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(DS.text3) }
-                    .buttonStyle(.plain).help("Clear").handCursor()
+                    .buttonStyle(.plainHand).help("Clear").handCursor()
             }
         }
         .padding(.horizontal, 8).frame(width: 260, height: 28)
@@ -264,9 +265,9 @@ enum RemovedWords {
         case .folderGone:
             return "Its folder \(RemovalLog.friendlyFolder(folder(e))) isn’t there any more"
         case .alreadyBack:
-            return e.isCapture ? "It’s back in Captures" : "You put it back yourself (from the Trash in Finder)"
+            return e.isCapture ? "It’s back in Context Capture" : "You put it back yourself (from the Trash in Finder)"
         case .done:
-            if e.isCapture { return "Back in Captures" }
+            if e.isCapture { return "Back in Context Capture" }
             guard let p = e.restoredPath else { return was }
             let name = (p as NSString).lastPathComponent
             let back = "Back \(RemovalLog.place((p as NSString).deletingLastPathComponent))"
@@ -846,7 +847,7 @@ struct RecentlyRemovedRow: View {
             .padding(16)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).handCursor()
+        .buttonStyle(.plainHand).handCursor()
         .card(14)
     }
 }

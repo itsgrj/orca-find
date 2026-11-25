@@ -499,7 +499,7 @@ final class PictureWorkspace: EditWorkspace {
         let stroke = eraseLive
         if !Eraser.isAvailable(eraseModel) {
             eraseLive = []
-            EditToastCenter.shared.show(eraseModel == .best ? "Unlock the Pro eraser first, or switch to Quick" : "The eraser isn’t installed")
+            EditToastCenter.shared.show(eraseModel == .best ? "Add the Pro eraser first, or switch to Quick" : "The eraser isn’t installed")
             return
         }
         guard !stroke.isEmpty, busy == nil, let w = working,

@@ -26,6 +26,8 @@ struct Capture: Identifiable, Hashable, Codable, Sendable {
     var pastedLinks: [String] = []
     /// Text Orca read in the picture.
     var ocr: String = ""
+    /// `ocr` holds words shared as text (Share menu), not read from the picture — never re-read it.
+    var textShared: Bool?
     var collection: String?
     /// The words that put it in the collection, e.g. "for Friday's newsletter".
     var collectionPhrase: String?

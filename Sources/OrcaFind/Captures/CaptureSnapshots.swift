@@ -113,7 +113,15 @@ extension Snapshot {
                     await shot(CaptureStripView(session: ss).padding(20).background(Color(hex: 0xDADDE2)), "25s\(i)-strip-shared-\(item.kind.rawValue)", NSSize(width: 600, height: 250))
                 }
                 await shot(SavedCardView(captureID: first.id, undo: {}, open: {}, hover: { _ in }).padding(20).background(Color(hex: 0xDADDE2)),
-                           "26-saved", NSSize(width: 420, height: 152))
+                           "26-saved", NSSize(width: 480, height: 152))
+                // Add more: the strip back where the card was, the saved words dimmed above the new ones.
+                let more = CaptureSession(image: img, pointSize: CGSize(width: 599, height: 412), context: CaptureContext())
+                more.addingTo = first
+                more.recorder.elapsed = 3
+                more.recorder.levels = (0..<28).map { i in i < 12 ? Float.random(in: 0.1...0.9) : 0 }
+                await shot(CaptureStripView(session: more).padding(20).background(Color(hex: 0xDADDE2)), "26b-adding-more-empty", NSSize(width: 500, height: 200))
+                more.recorder.transcript = "Also the colour palette, tag it sci-fi and remind me Friday"
+                await shot(CaptureStripView(session: more).padding(20).background(Color(hex: 0xDADDE2)), "26c-adding-more", NSSize(width: 500, height: 200))
             }
             await shot(NewCollectionPopover(existing: ["Newsletter", "Recipes"]) { _ in }, "28-new-collection", NSSize(width: 300, height: 230))
             await shot(CapturesSettings().padding(24).background(DS.surface), "27-settings", NSSize(width: 660, height: 1040))

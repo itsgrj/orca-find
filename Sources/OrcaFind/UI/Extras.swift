@@ -5,7 +5,10 @@ import Speech
 
 struct SettingsView: View {
     @Environment(AppState.self) private var state
-    enum Pane: String, CaseIterable { case general = "General", menuBar = "Menu Bar", captures = "Captures", library = "Library", voice = "Search & Voice", privateAI = "Private AI", cleanup = "Clean Up", privacy = "Privacy" }
+    enum Pane: String, CaseIterable { case general = "General", menuBar = "Menu Bar", captures = "Captures", library = "Library", voice = "Search & Voice", privateAI = "Private AI", cleanup = "Clean Up", privacy = "Privacy"
+        /// What the tab says. The raw value stays put: it names the design snapshots.
+        var title: String { self == .captures ? "Context Capture" : rawValue }
+    }
     @State private var pane: Pane
     init(pane: Pane = .general) { _pane = State(initialValue: pane) }
 
@@ -16,7 +19,7 @@ struct SettingsView: View {
                     Button { pane = p } label: {
                         HStack(spacing: 8) {
                             Image(systemName: icon(p)).frame(width: 16)
-                            Text(p.rawValue).font(DS.body)
+                            Text(p.title).font(DS.body)
                             Spacer()
                         }
                         .foregroundStyle(DS.text)
@@ -24,7 +27,7 @@ struct SettingsView: View {
                         .background(RoundedRectangle(cornerRadius: 8).fill(pane == p ? DS.surface : .clear))
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHand)
                 }
                 Spacer()
             }
@@ -59,8 +62,8 @@ struct SettingsView: View {
         case .captures: return "viewfinder"
         case .library: return "folder"
         case .voice: return "mic"
-        case .privateAI: return "sparkles"
-        case .cleanup: return "sparkles"
+        case .privateAI: return "brain.head.profile"
+        case .cleanup: return "externaldrive.badge.checkmark"
         case .privacy: return "lock"
         }
     }
@@ -86,7 +89,7 @@ struct SettingsView: View {
                 Picker("", selection: $p.appearance) { ForEach(AppearanceMode.allCases) { Text($0.title).tag($0) } }.pickerStyle(.segmented).frame(width: 220).labelsHidden()
             }
             VStack(alignment: .leading, spacing: 10) {
-                HStack { Text("Background").font(DS.body).foregroundStyle(DS.text); Spacer(); Text("Applies to every screen · dark mode uses Night sea").font(DS.caption).foregroundStyle(DS.text2) }
+                HStack { Text("Background").font(DS.body).foregroundStyle(DS.text); Spacer(); Text("Applies to every screen · dark mode uses Deep sea").font(DS.caption).foregroundStyle(DS.text2) }
                 HStack(spacing: 10) {
                     ForEach(BackgroundStyle.allCases) { b in
                         Button { p.background = b } label: {
@@ -100,7 +103,7 @@ struct SettingsView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(p.background == b ? DS.brand : DS.border, lineWidth: p.background == b ? 2 : 1))
                                 Text(b.title).font(DS.caption).foregroundStyle(p.background == b ? DS.text : DS.text2)
                             }
-                        }.buttonStyle(.plain)
+                        }.buttonStyle(.plainHand)
                     }
                 }
             }
@@ -139,7 +142,7 @@ struct SettingsView: View {
         }
         .disabled(!p.showMenuBar).opacity(p.showMenuBar ? 1 : 0.5)
         Text(p.capturesEnabled ? "The dropdown opens on your newest downloads. Scroll down for older ones from the past month."
-             : "Captures are turned off in Settings › Captures, so the Capture button stays hidden.")
+             : "Context Capture is turned off in Settings › Context Capture, so the Capture button stays hidden.")
             .font(DS.caption).foregroundStyle(DS.text2)
         group("Drop Shelf") {
             line("Drop Shelf") { Toggle("", isOn: $p.shelfEnabled).toggleStyle(.switch).labelsHidden() }

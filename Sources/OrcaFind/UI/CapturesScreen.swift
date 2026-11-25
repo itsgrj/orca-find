@@ -90,8 +90,8 @@ struct CapturesScreen: View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
                 if state.capturesFolder != nil || state.capturesTag != nil {
-                    Button { goHome() } label: { Text("← Captures").font(DS.bodySM).foregroundStyle(DS.text2) }
-                        .buttonStyle(.plain).handCursor()
+                    Button { goHome() } label: { Text("← Context Capture").font(DS.bodySM).foregroundStyle(DS.text2) }
+                        .buttonStyle(.plainHand).handCursor()
                 }
                 Text(title).font(DS.headingLG).foregroundStyle(DS.text).lineLimit(1)
                 Text(subtitle).font(DS.bodySM).foregroundStyle(DS.text2)
@@ -109,10 +109,10 @@ struct CapturesScreen: View {
     }
 
     private var title: String {
-        if !query.isEmpty { return "Captures" }
+        if !query.isEmpty { return "Context Capture" }
         if let f = state.capturesFolder { return f.title }
         if let t = state.capturesTag { return "#" + t }
-        return "Captures"
+        return "Context Capture"
     }
 
     private var subtitle: String {
@@ -196,7 +196,7 @@ struct CapturesScreen: View {
 
     private func chip(_ label: String, selected: Bool, _ action: @escaping () -> Void) -> some View {
         Button(action: action) { Chip(label: label, style: selected ? .selected : .normal) }
-            .buttonStyle(.plain)
+            .buttonStyle(.plainHand)
     }
 
     private func hint(_ text: String) -> some View {
@@ -321,7 +321,7 @@ struct CaptureFolderTile: View {
             .frame(width: 200, height: 168, alignment: .topLeading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHand)
         .handCursor()
         .onHover { h in withAnimation(.spring(duration: 0.25)) { hovering = h } }
         .task(id: ids.joined()) {
@@ -562,6 +562,8 @@ struct CaptureDetailScreen: View {
     @State private var newCollection = ""
     @State private var askingCollection = false
     @State private var addingTag = false
+    /// Which capture's "Text Orca read" is opened in full. Keyed by id so it closes when you move to another capture.
+    @State private var ocrOpenFor: String?
     @StateObject private var audio = AudioPlayback()
 
     var body: some View {
@@ -576,15 +578,15 @@ struct CaptureDetailScreen: View {
             .padding(.horizontal, 32).padding(.top, 22).padding(.bottom, 24)
             .onDisappear { audio.stop() }
         } else {
-            EmptyState(symbol: "viewfinder", tag: "Captures", title: "This capture is gone", message: "It may have been deleted.")
+            EmptyState(symbol: "viewfinder", tag: "Context Capture", title: "This capture is gone", message: "It may have been deleted.")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     private func topRow(_ c: Capture) -> some View {
         HStack(spacing: 8) {
-            Button { state.navigate(.captures) } label: { Text("← Captures").font(DS.bodySM).foregroundStyle(DS.text2) }
-                .buttonStyle(.plain).handCursor()
+            Button { state.navigate(.captures) } label: { Text("← Context Capture").font(DS.bodySM).foregroundStyle(DS.text2) }
+                .buttonStyle(.plainHand).handCursor()
             if let col = c.collection {
                 Text("/").font(DS.bodySM).foregroundStyle(DS.text3)
                 Button {
@@ -592,7 +594,7 @@ struct CaptureDetailScreen: View {
                     state.capturesFolder = .collection(col)
                     state.navigate(.captures)
                 } label: { Text(col).font(DS.bodySM).foregroundStyle(DS.text) }
-                    .buttonStyle(.plain).handCursor()
+                    .buttonStyle(.plainHand).handCursor()
             }
             Spacer()
             if let link = c.links.first, let url = URL(string: link) {
@@ -604,6 +606,7 @@ struct CaptureDetailScreen: View {
                 Button("Copy Picture Only") { CaptureActions.copyImage(c) }
                 Button("Copy Details Only") { CaptureActions.copyText(c) }
                 if c.hasAudio { Button("Transcribe Again from Recording") { CaptureController.transcribeAgain(c.id) } }
+                if c.textShared != true && !c.hasClip { Button("Read Text Again from Picture") { CaptureController.readTextAgain(c.id) } }
                 Divider()
                 Button("Show Picture in Finder") { NSWorkspace.shared.activateFileViewerSelecting([c.imageURL]) }
                 if c.hasClip {
@@ -651,7 +654,7 @@ struct CaptureDetailScreen: View {
                     Spacer()
                     if !editing {
                         Button(c.note.isEmpty ? "Add words" : "Edit") { draft = c.note; editing = true }
-                            .buttonStyle(.plain).font(DS.caption).foregroundStyle(DS.link).handCursor()
+                            .buttonStyle(.plainHand).font(DS.caption).foregroundStyle(DS.link).handCursor()
                     }
                     if c.hasAudio { Text(CaptureStripView.clock(c.audioSeconds)).font(DS.caption).foregroundStyle(DS.text2) }
                 }
@@ -661,7 +664,7 @@ struct CaptureDetailScreen: View {
                             Image(systemName: audio.playing ? "pause.fill" : "play.fill").font(.system(size: 11))
                                 .foregroundStyle(DS.onBrand).frame(width: 28, height: 28).background(Circle().fill(DS.brand))
                         }
-                        .buttonStyle(.plain).handCursor()
+                        .buttonStyle(.plainHand).handCursor()
                         ProgressView(value: audio.progress).tint(Color(hex: 0x8B5CF6))
                     }
                 }
@@ -691,7 +694,7 @@ struct CaptureDetailScreen: View {
                                 Text(link.url.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "www.", with: ""))
                                     .font(DS.caption).foregroundStyle(DS.link).lineLimit(1).truncationMode(.middle)
                             }
-                            .buttonStyle(.plain).handCursor()
+                            .buttonStyle(.plainHand).handCursor()
                             Spacer()
                             Text(link.label).font(DS.caption).lineLimit(1).fixedSize()
                                 .foregroundStyle(link.pasted ? DS.Tone.magic.fg : DS.text2)
@@ -712,11 +715,11 @@ struct CaptureDetailScreen: View {
                             Text(url.lastPathComponent).font(DS.caption).foregroundStyle(exists ? DS.link : DS.text3)
                                 .lineLimit(1).truncationMode(.middle)
                         }
-                        .buttonStyle(.plain).handCursor().disabled(!exists)
+                        .buttonStyle(.plainHand).handCursor().disabled(!exists)
                         Spacer()
                         if exists {
                             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-                                .buttonStyle(.plain).font(DS.caption).foregroundStyle(DS.link).handCursor()
+                                .buttonStyle(.plainHand).font(DS.caption).foregroundStyle(DS.link).handCursor()
                         } else {
                             Text("Moved or deleted").font(DS.caption).foregroundStyle(DS.text3)
                         }
@@ -732,7 +735,7 @@ struct CaptureDetailScreen: View {
                         if let p = c.reminderPhrase { Text("from “\(p)”").font(DS.caption).foregroundStyle(DS.Tone.magic.fg) }
                         if c.reminderID != nil {
                             Button("Open in Reminders ↗") { RemindersBridge.openApp() }
-                                .buttonStyle(.plain).font(DS.caption).foregroundStyle(DS.link).handCursor()
+                                .buttonStyle(.plainHand).font(DS.caption).foregroundStyle(DS.link).handCursor()
                         }
                     }
                 }
@@ -748,7 +751,7 @@ struct CaptureDetailScreen: View {
                             Button("New Collection…") { newCollection = ""; askingCollection = true }
                             if c.collection != nil { Button("Remove from Collection") { setCollection(c, nil) } }
                         }
-                        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor()
                         .font(DS.caption).foregroundStyle(DS.link)
                         .popover(isPresented: $askingCollection, arrowEdge: .bottom) {
                             NewCollectionPopover(existing: library.collections.map(\.name)) { name in
@@ -767,10 +770,26 @@ struct CaptureDetailScreen: View {
             tagsBox(c)
 
             if !c.ocr.isEmpty {
+                // On macOS a selectable Text ignores lineLimit when drawing (the box sizes for 8 lines, the text
+                // paints all of them over whatever sits below). So: short and unselectable when closed, full
+                // height and selectable when opened.
+                let ocr = c.ocr.replacingOccurrences(of: "\n", with: " ")
+                let open = ocrOpenFor == c.id
                 box {
-                    Text("Text Orca read").font(DS.bodySM).foregroundStyle(DS.text)
-                    Text(c.ocr.replacingOccurrences(of: "\n", with: " "))
-                        .font(DS.caption).foregroundStyle(DS.text2).lineLimit(8).textSelection(.enabled)
+                    HStack {
+                        Text("Text Orca read").font(DS.bodySM).foregroundStyle(DS.text)
+                        Spacer()
+                        if open || ocr.count > 360 {
+                            Button(open ? "Show less" : "Show all") { ocrOpenFor = open ? nil : c.id }
+                                .buttonStyle(.plainHand).font(DS.caption).foregroundStyle(DS.link).handCursor()
+                        }
+                    }
+                    if open {
+                        Text(ocr).font(DS.caption).foregroundStyle(DS.text2)
+                            .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    } else {
+                        Text(ocr).font(DS.caption).foregroundStyle(DS.text2).lineLimit(8)
+                    }
                 }
             }
 
@@ -806,11 +825,11 @@ struct CaptureDetailScreen: View {
                         state.capturesTag = t
                         state.navigate(.captures)
                     } label: { Chip(label: "#\(t)", symbol: byOrca ? "sparkle" : nil, style: .normal, onRemove: { removeTag(c, t) }) }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHand)
                         .help(byOrca ? "Orca added this from your words and the picture — × if it’s wrong" : "See every capture tagged #\(t)")
                 }
                 Button { addingTag = true } label: { Chip(label: "+ tag", style: .normal) }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.plainHand)
                     .popover(isPresented: $addingTag, arrowEdge: .bottom) {
                         AddTagPopover(existing: library.tagNames, have: c.tagList) { t in
                             addingTag = false
@@ -1084,7 +1103,7 @@ struct AddTagPopover: View {
             if !options.isEmpty {
                 FlowLayout(spacing: 6) {
                     ForEach(options.prefix(12), id: \.self) { t in
-                        Button { done(t) } label: { Chip(label: "#\(t)", style: .normal) }.buttonStyle(.plain)
+                        Button { done(t) } label: { Chip(label: "#\(t)", style: .normal) }.buttonStyle(.plainHand)
                     }
                 }
             }

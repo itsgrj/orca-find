@@ -28,7 +28,7 @@ enum Eraser {
     static func model(_ m: Model) throws -> MLModel {
         lock.lock(); defer { lock.unlock() }
         if let x = loaded[m] { return x }
-        guard let u = url(m) else { throw EditError.message(m == .best ? "Unlock the Pro eraser first" : "The eraser isn’t installed") }
+        guard let u = url(m) else { throw EditError.message(m == .best ? "Add the Pro eraser first" : "The eraser isn’t installed") }
         let cfg = MLModelConfiguration()
         // LaMa was converted and checked for all compute units; MI-GAN is float32, which the Neural Engine can't run.
         cfg.computeUnits = m == .best ? .all : .cpuAndGPU

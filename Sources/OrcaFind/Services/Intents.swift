@@ -62,7 +62,7 @@ struct SearchInOrcaFindIntent: AppIntent {
 }
 
 struct StartCaptureIntent: AppIntent {
-    static var title: LocalizedStringResource = "Start a Capture"
+    static var title: LocalizedStringResource = "Start a Context Capture"
     static var description = IntentDescription("Drag over part of the screen, say why you’re keeping it, and find it later in OrcaFind.")
 
     @MainActor
@@ -75,8 +75,8 @@ struct StartCaptureIntent: AppIntent {
 }
 
 struct SaveToCapturesIntent: AppIntent {
-    static var title: LocalizedStringResource = "Save to Captures"
-    static var description = IntentDescription("Saves a file, a link or some text to your Captures. OrcaFind listens for a note, as with any capture.")
+    static var title: LocalizedStringResource = "Save to Context Capture"
+    static var description = IntentDescription("Saves a file, a link or some text to Context Capture. OrcaFind listens for a note, as with any capture.")
 
     @Parameter(title: "File")
     var file: IntentFile?
@@ -110,10 +110,10 @@ struct OrcaFindShortcuts: AppShortcutsProvider {
                     shortTitle: "Search Files", systemImageName: "magnifyingglass")
         AppShortcut(intent: GetLatestDownloadIntent(), phrases: ["Get my latest download from \(.applicationName)"],
                     shortTitle: "Latest Download", systemImageName: "arrow.down.circle")
-        AppShortcut(intent: StartCaptureIntent(), phrases: ["Start a capture with \(.applicationName)", "Capture with \(.applicationName)"],
-                    shortTitle: "Start a Capture", systemImageName: "camera.viewfinder")
-        AppShortcut(intent: SaveToCapturesIntent(), phrases: ["Save to \(.applicationName) Captures"],
-                    shortTitle: "Save to Captures", systemImageName: "tray.and.arrow.down")
+        AppShortcut(intent: StartCaptureIntent(), phrases: ["Start a Context Capture with \(.applicationName)", "Start a capture with \(.applicationName)", "Capture with \(.applicationName)"],
+                    shortTitle: "Start a Context Capture", systemImageName: "camera.viewfinder")
+        AppShortcut(intent: SaveToCapturesIntent(), phrases: ["Save to \(.applicationName) Context Capture", "Save to \(.applicationName) Captures"],
+                    shortTitle: "Save to Context Capture", systemImageName: "tray.and.arrow.down")
     }
 }
 

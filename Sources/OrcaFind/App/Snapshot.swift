@@ -106,6 +106,9 @@ enum Snapshot {
             state.searchText = ""
             let draft = FolderDraft(folder: SmartFolder(name: "Acme invoices", rules: [SmartRule(field: .kind, value: "pdfs"), SmartRule(field: .text, value: "acme"), SmartRule(field: .date, value: "this year")]), isNew: true)
             await render(SmartFolderSheet(draft: draft), size: NSSize(width: 840, height: 590), name: "13-rules-sheet", window: window)
+            var long = FolderDraft(folder: SmartFolder(name: "", rules: []), isNew: true)
+            long.description = "All pictures that have blue colored theme or design in them, especially screenshots and wallpapers I saved this year"
+            await render(SmartFolderSheet(draft: long), size: NSSize(width: 840, height: 590), name: "13b-rules-sheet-long", window: window)
             prefs.onboarded = wasOnboarded
             print("snapshots written to \(outDir.path)")
             exit(0)

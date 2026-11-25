@@ -11,6 +11,8 @@ struct OrcaFindApp: App {
         DebugCLI.runIfRequested()
         EditDebug.runIfRequested()
         UpdateDebug.runIfRequested()
+        // Before any window exists, so every switch, segmented picker and pop-up shows the hand.
+        MainActor.assumeIsolated { NativeControlCursor.install() }
     }
 
     var body: some Scene {
@@ -109,7 +111,7 @@ struct AppCommands: Commands {
         CommandMenu("Go") {
             Button("Home") { state.navigate(.home) }
                 .keyboardShortcut("h", modifiers: [.command, .shift])
-            Button("Captures") { state.navigate(.captures) }
+            Button("Context Capture") { state.navigate(.captures) }
                 .keyboardShortcut("c", modifiers: [.command, .shift, .option])
             Button("Library") { state.navigate(.library) }
                 .keyboardShortcut("l", modifiers: [.command, .shift])

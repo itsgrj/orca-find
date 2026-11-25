@@ -1,6 +1,6 @@
-<img src="docs/readme/icon.png" width="96" alt="Orca Find app icon">
+<img src="docs/readme/icon.png" width="96" alt="OrcaFind app icon">
 
-# Orca Find
+# OrcaFind
 
 Find any file on your Mac by asking for it.
 
@@ -12,15 +12,15 @@ Find any file on your Mac by asking for it.
 
 [![Download for Mac](https://img.shields.io/badge/Download%20for%20Mac-0f62fe?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/itsgrj/orca-find/releases/latest)
 
-![Orca Find, a file finder for macOS that understands plain English](docs/readme/banner.jpg)
+![OrcaFind, a file finder for macOS that understands plain English](docs/readme/banner.jpg)
 
-Orca Find is a native macOS file finder. Files show up as big thumbnail cards, and search understands plain English or your voice. It reads the text inside screenshots and PDFs, knows which website every download came from, and lets you grab anything on screen and say out loud why you saved it.
+OrcaFind is a native macOS file finder. Files show up as big thumbnail cards, and search understands plain English or your voice. It reads the text inside screenshots and PDFs, knows which website every download came from, and lets you grab anything on screen and say out loud why you saved it.
 
 Everything runs on your Mac. Indexing, text recognition, duplicate detection, voice and the optional AI models never send your files anywhere.
 
 ## Get started
 
-1. Download **Orca-Find.zip** from the [latest release](https://github.com/itsgrj/orca-find/releases/latest), unzip it and drag **Orca Find** into Applications.
+1. Download **OrcaFind.zip** from the [latest release](https://github.com/itsgrj/orca-find/releases/latest), unzip it and drag **OrcaFind** into Applications.
 2. Open it. The first time, macOS says it can't check the app, because it isn't notarized yet. Go to **System Settings › Privacy & Security** and click **Open Anyway**.
 3. Allow Desktop, Documents and Downloads when asked. Orca only reads them on this Mac.
 4. Type or say what you're looking for. Press **⇧⌘Space** from any app for Quick Search, and **⌥⇧Space** to grab something on screen.
@@ -113,7 +113,7 @@ Orca's MCP server gives Claude read-only access to your captures, never your oth
 - **Claude Code:**
 
   ```sh
-  claude mcp add orca -- "/Applications/Orca Find.app/Contents/MacOS/OrcaFind" --mcp
+  claude mcp add orca -- "/Applications/OrcaFind.app/Contents/MacOS/OrcaFind" --mcp
   ```
 
 ## Keyboard shortcuts
@@ -155,7 +155,7 @@ You only need the Command Line Tools, not Xcode.
 ```sh
 git clone https://github.com/itsgrj/orca-find.git
 cd orca-find
-./build.sh release --open    # builds "build/Orca Find.app" and opens it
+./build.sh release --open    # builds "build/OrcaFind.app" and opens it
 ./build.sh debug             # faster compile while developing
 ```
 
@@ -182,7 +182,7 @@ Developer hooks:
 | `Sources/OrcaFind/Services` | Quick Look, hot keys, voice, private AI, music player |
 | `Sources/OrcaFind/UI` | Every screen and the design system |
 | `tools` | App icon and model fetch scripts |
-| `website` | The Orca Find landing page |
+| `website` | The OrcaFind landing page |
 
 ## Known gaps
 

@@ -111,8 +111,32 @@ struct FileItem: Identifiable, Hashable {
 
     var kindName: String {
         if isFolder { return "Folder" }
-        if let id = typeIdentifier, let t = UTType(id), let d = t.localizedDescription { return d }
+        if let id = typeIdentifier, let t = UTType(id) {
+            if let office = Self.officeKinds[t.identifier] { return office }
+            if let d = t.localizedDescription { return Self.readableKind(d) }
+        }
         return ext.isEmpty ? "Document" : ext.uppercased()
+    }
+
+    /// macOS calls a .docx an "Office Open XML word processing document" (and .doc a
+    /// "Microsoft Word 97 - 2004 document"). Everyday names instead, matched by type, not wording.
+    private static let officeKinds: [String: String] = [
+        "org.openxmlformats.wordprocessingml.document": "Word document",
+        "com.microsoft.word.doc": "Word document",
+        "org.openxmlformats.spreadsheetml.sheet": "Excel spreadsheet",
+        "com.microsoft.excel.xls": "Excel spreadsheet",
+        "org.openxmlformats.presentationml.presentation": "PowerPoint presentation",
+        "com.microsoft.powerpoint.ppt": "PowerPoint presentation",
+    ]
+
+    /// macOS gives some kinds as bare lowercase words ("text", "comma-separated values") next to
+    /// "PDF document". Give vague ones a clearer name and start every kind with a capital.
+    private static func readableKind(_ d: String) -> String {
+        switch d.lowercased() {
+        case "text": return "Plain text"
+        case "comma-separated values": return "CSV spreadsheet"
+        default: return d.prefix(1).uppercased() + d.dropFirst()
+        }
     }
 
     var dimensionsText: String? {

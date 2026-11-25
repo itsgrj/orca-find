@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds every Orca Find icon asset from tools/icon/orca-paths.json.
+"""Builds every OrcaFind icon asset from tools/icon/orca-paths.json.
 
 Outputs
   Resources/Icon/AppIcon.svg            full-bleed 1024 tile (master artwork, for web/marketing)

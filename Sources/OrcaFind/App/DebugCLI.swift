@@ -297,6 +297,20 @@ enum DebugCLI {
                 print("Identical groups: \(groups.count) → " + groups.map { $0.items.map(\.name).joined(separator: " = ") }.joined(separator: " | "))
             }
             queries.removeAll { $0 == "--dupes" }
+            if queries.contains("--suggestions") {
+                // Home's "Try asking" chips for this Mac, built three times to show how they vary.
+                queries.removeAll { $0 == "--suggestions" }
+                let stats = AppState.computeStats(items, largeBytes: 500_000_000)
+                for seed in [1, 2, 3] as [UInt64] {
+                    let t0 = Date()
+                    let list = Suggestions.build(items: items, stats: stats, seed: seed)
+                    print("Suggestions (seed \(seed), \(Int(Date().timeIntervalSince(t0) * 1000)) ms):")
+                    for s in list {
+                        let q = QueryParser.parse(s.text)
+                        print("  • \(s.text)  [\(s.symbol)] → \(SearchEngine.run(q, in: items).count) files, \(CaptureSearch.find(q, limit: 99).count) captures")
+                    }
+                }
+            }
             for q in queries {
                 var parsed = QueryParser.parse(q)
                 if useAI {

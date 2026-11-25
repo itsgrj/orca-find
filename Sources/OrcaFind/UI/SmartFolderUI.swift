@@ -61,7 +61,7 @@ struct AddTile: View {
             .padding(4)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHand)
         .handCursor()
     }
 }
@@ -199,20 +199,7 @@ struct SmartFolderSheet: View {
             }
 
             PixelLabel("Describe it — or add rules below").padding(.top, 6)
-            field(focused: focus == .describe) {
-                Image(systemName: "sparkles").font(.system(size: 12)).foregroundStyle(DS.text2)
-                TextField("", text: $draft.description, prompt: Text("e.g. invoices from gmail this year").foregroundStyle(DS.text3))
-                    .textFieldStyle(.plain).font(DS.body).focused($focus, equals: .describe)
-                    .onSubmit { interpret() }
-                if reading {
-                    ProgressView().controlSize(.small)
-                    Text("reading…").font(DS.caption).foregroundStyle(DS.Tone.magic.fg)
-                } else if !draft.description.trimmingCharacters(in: .whitespaces).isEmpty {
-                    Button("Turn into rules ↩") { interpret() }.buttonStyle(.plain).font(DS.caption).foregroundStyle(DS.Tone.magic.fg).handCursor()
-                } else if let note {
-                    Text(note).font(DS.caption).foregroundStyle(DS.Tone.magic.fg)
-                }
-            }
+            describeField
 
             HStack(spacing: 8) {
                 PixelLabel("Rules · files must match")
@@ -220,7 +207,7 @@ struct SmartFolderSheet: View {
                     Button("all of them") { draft.folder.matchAll = true }
                     Button("any of them") { draft.folder.matchAll = false }
                 } label: { Chip(label: draft.folder.matchAll ? "all of them" : "any of them", symbol: "checkmark", menu: true) }
-                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor()
             }
             .padding(.top, 6)
 
@@ -254,6 +241,56 @@ struct SmartFolderSheet: View {
             .background(RoundedRectangle(cornerRadius: 10).fill(DS.surface))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(DS.border))
         }
+    }
+
+    /// A sentence field: it grows with the text (up to five lines, then scrolls inside), and its button
+    /// sits on its own row underneath, so typing can never slide under it or out of sight.
+    private var describeField: some View {
+        let hasText = !draft.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let showFooter = focus == .describe || hasText || reading || note != nil
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "sparkles").font(.system(size: 12)).foregroundStyle(DS.text2)
+                TextField("", text: $draft.description, axis: .vertical)
+                    .lineLimit(1...5)
+                    .textFieldStyle(.plain).font(DS.body).focused($focus, equals: .describe)
+                    .onSubmit { interpret() }
+                    .background(alignment: .topLeading) {
+                        if draft.description.isEmpty {
+                            Text("e.g. invoices from gmail this year").font(DS.body).foregroundStyle(DS.text3).allowsHitTesting(false)
+                        }
+                    }
+            }
+            if showFooter {
+                HStack(spacing: 8) {
+                    if reading {
+                        ProgressView().controlSize(.small)
+                        Text("reading…").font(DS.caption).foregroundStyle(DS.Tone.magic.fg)
+                    } else if !hasText, let note {
+                        Text(note).font(DS.caption).foregroundStyle(DS.Tone.magic.fg)
+                    }
+                    Spacer(minLength: 0)
+                    Button { interpret() } label: {
+                        HStack(spacing: 6) {
+                            Text("Turn into rules")
+                            Text("↩").font(.system(size: 10, weight: .medium))
+                                .padding(.horizontal, 4).padding(.vertical, 1)
+                                .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(DS.Tone.magic.fg.opacity(0.5), lineWidth: 1))
+                        }
+                        .font(DS.caption).foregroundStyle(DS.Tone.magic.fg)
+                        .padding(.horizontal, 9).padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(DS.Tone.magic.bg))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plainHand).handCursor()
+                    .disabled(!hasText || reading).opacity(hasText && !reading ? 1 : 0.45)
+                }
+                .padding(.leading, 20)
+            }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(DS.surface))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(focus == .describe ? DS.focus : DS.borderStrong, lineWidth: focus == .describe ? 1.5 : 1))
     }
 
     private func field<C: View>(focused: Bool, @ViewBuilder _ content: () -> C) -> some View {
@@ -368,7 +405,7 @@ struct RuleRow: View {
                     Button { if f != rule.field { let id = rule.id; rule = .blank(f); rule.id = id } } label: { Label(f.title, systemImage: f.symbol) }
                 }
             } label: { Chip(label: rule.field.title, symbol: rule.field.symbol, menu: true) }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor()
             if !rule.field.op.isEmpty { Text(rule.field.op).font(DS.bodySM).foregroundStyle(DS.text2) }
             value
             Spacer(minLength: 0)
@@ -392,13 +429,14 @@ struct RuleRow: View {
                 Divider()
                 Button("Choose a Folder…") { pickFolder() }
             } label: { Chip(label: rule.valueLabel(), symbol: "folder", menu: true) }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor()
         case .name, .text, .looks:
             TextField("", text: Binding(get: { rule.value }, set: { rule.value = $0; if rule.field == .looks { rule.labels = nil } }),
                       prompt: Text(rule.field == .looks ? "e.g. tiger, receipt, beach" : rule.field == .name ? "e.g. invoice" : "e.g. acme").foregroundStyle(DS.text3))
                 .textFieldStyle(.plain).font(DS.bodySM)
                 .padding(.horizontal, 8).padding(.vertical, 5)
-                .frame(width: 200)
+                .frame(minWidth: 160, maxWidth: .infinity)
+                .help(rule.value)
                 .background(RoundedRectangle(cornerRadius: 8).fill(DS.surface))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(DS.borderStrong))
         case .other:
@@ -410,7 +448,7 @@ struct RuleRow: View {
         Menu {
             ForEach(options, id: \.value) { o in Button(o.label) { rule.value = o.value } }
         } label: { Chip(label: rule.valueLabel(sources: sources), menu: true) }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor()
     }
 
     private func pickFolder() {

@@ -105,7 +105,9 @@ final class QuickSearchController: NSObject, NSWindowDelegate {
         p.isOpaque = false
         p.backgroundColor = .clear
         p.hasShadow = true
-        p.isMovableByWindowBackground = true
+        // Off: it made dragging a result row move the whole panel instead of the file.
+        // The panel still moves from its search bar and hint bar (PanelDragHandle).
+        p.isMovableByWindowBackground = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         p.delegate = self
         let root = QuickSearchView(model: model)
@@ -183,6 +185,7 @@ struct QuickSearchView: View {
                 }
             }
             .padding(.horizontal, 18).frame(height: 62)
+            .background(PanelDragHandle())
 
             if !model.parsed.chips.isEmpty && !model.query.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -227,6 +230,7 @@ struct QuickSearchView: View {
                 hint("esc", "Close")
             }
             .padding(.horizontal, 16).frame(height: 36)
+            .background(PanelDragHandle())
         }
         .frame(width: 700, height: 480)
         // Follows light and dark mode, like the rest of the app.
@@ -245,6 +249,17 @@ struct QuickSearchView: View {
     }
 }
 
+/// Empty parts of the search bar and hint bar move the panel; the result list never does,
+/// so dragging a row drags the file.
+private struct PanelDragHandle: NSViewRepresentable {
+    final class DragView: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
+        override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+    }
+    func makeNSView(context: Context) -> NSView { DragView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
 private struct QuickRow: View {
     let item: FileItem
     let selected: Bool
@@ -261,10 +276,12 @@ private struct QuickRow: View {
                     .font(DS.caption).opacity(0.75).lineLimit(1)
             }
             Spacer()
-            if let s = item.source { Badge(s.name, tone: selected ? .neutral : .info) }
+            if let s = item.source { Badge(s.name, tone: .info) }
             if selected { Text("↩").font(.system(size: 12, weight: .medium)) }
         }
         .foregroundStyle(selected ? DS.onBrand : DS.text)
+        // This row draws its own highlight; tell children so badges and grey text adapt.
+        .environment(\.backgroundProminence, selected ? .increased : .standard)
         .padding(.horizontal, 10).padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 10).fill(selected ? DS.brand : .clear))
         .contentShape(Rectangle())

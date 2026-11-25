@@ -321,7 +321,7 @@ struct AudioStage: View {
                                 .frame(width: 46, height: 46)
                                 .background(Circle().fill(DS.brand))
                         }
-                        .buttonStyle(.plain).handCursor()
+                        .buttonStyle(.plainHand).handCursor()
                         .keyboardShortcut(.space, modifiers: [])
                         .help(ws.playing ? "Pause (Space)" : "Play the kept part (Space)")
                         VStack(alignment: .leading, spacing: 3) {
@@ -719,6 +719,6 @@ struct OptRadioRow: View {
             .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(selected ? DS.focus.opacity(0.6) : DS.border))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).handCursor()
+        .buttonStyle(.plainHand).handCursor()
     }
 }

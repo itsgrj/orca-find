@@ -174,7 +174,7 @@ private struct ToastButton: View {
                 .padding(.horizontal, 9).padding(.vertical, 4)
                 .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(strong ? 0.15 : 0)))
         }
-        .buttonStyle(.plain).handCursor()
+        .buttonStyle(.plainHand).handCursor()
     }
 }
 
@@ -223,7 +223,7 @@ private struct BarButton: View {
             .background(RoundedRectangle(cornerRadius: 8).fill(magic ? DS.Tone.magic.bg : selected ? DS.tertiary : hover ? DS.hover : .clear))
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).handCursor()
+        .buttonStyle(.plainHand).handCursor()
         .disabled(!enabled).opacity(enabled ? 1 : 0.4)
         .onHover { hover = $0 }
     }
@@ -290,7 +290,7 @@ private struct ToolTile: View {
                 .opacity(ok ? 1 : 0.4)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).handCursor(ok)
+        .buttonStyle(.plainHand).handCursor(ok)
         .disabled(!ok)
         .onHover { hover = $0 }
         .help(ok ? "\(tool.title) — \(tool.hint)" : "\(tool.title) — coming later")

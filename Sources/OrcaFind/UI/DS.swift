@@ -196,7 +196,7 @@ struct Chip: View {
             Text(label).font(DS.bodySM).lineLimit(1)
             if let onRemove {
                 Button(action: onRemove) { Image(systemName: "xmark").font(.system(size: 8, weight: .bold)) }
-                    .buttonStyle(.plain).help("Remove").handCursor()
+                    .buttonStyle(.plainHand).help("Remove").handCursor()
             } else if menu {
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).opacity(0.7)
             }
@@ -213,15 +213,36 @@ struct Chip: View {
     private var bg: Color { style == .selected ? DS.brand : style == .understood ? DS.Tone.emphasis.bg : DS.surface }
 }
 
+/// Grey "second line" text that stays readable on a selected row. Fixed colours like `DS.text2`
+/// don't change when a row is highlighted, so grey-on-blue becomes unreadable. On a highlighted
+/// background (`backgroundProminence == .increased`, set by Table/List for selected rows, or by
+/// rows that draw their own highlight) this follows the row's foreground at secondary strength.
+/// Use this, not `.foregroundStyle(DS.text2)`, for anything inside a selectable row.
+struct SecondaryText: ViewModifier {
+    @Environment(\.backgroundProminence) private var prominence
+    func body(content: Content) -> some View {
+        content.foregroundStyle(prominence == .increased ? AnyShapeStyle(.secondary) : AnyShapeStyle(DS.text2))
+    }
+}
+
+extension View {
+    func secondaryText() -> some View { modifier(SecondaryText()) }
+}
+
 struct Badge: View {
     let label: String
     var tone: DS.Tone = .neutral
     init(_ label: String, tone: DS.Tone = .neutral) { self.label = label; self.tone = tone }
+    /// On a selected row a tinted pill disappears into the highlight; switch to a quiet
+    /// see-through pill in the row's own text colour instead.
+    @Environment(\.backgroundProminence) private var prominence
     var body: some View {
+        let onHighlight = prominence == .increased
         Text(label).font(DS.bodySM).lineLimit(1)
             .padding(.horizontal, 8).padding(.vertical, 2)
-            .foregroundStyle(tone.fg)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(tone.bg))
+            .foregroundStyle(onHighlight ? AnyShapeStyle(.primary) : AnyShapeStyle(tone.fg))
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(onHighlight ? AnyShapeStyle(HierarchicalShapeStyle.primary.opacity(0.18)) : AnyShapeStyle(tone.bg)))
     }
 }
 
@@ -251,7 +272,7 @@ struct IconBtn: View {
                 .background(RoundedRectangle(cornerRadius: 8).fill(selected ? (dark ? DS.topbarField : DS.tertiary) : .clear))
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHand)
         .handCursor()
         .help(help)
     }
@@ -304,20 +325,18 @@ struct ToastView: View {
             Text(label).font(DS.bodySM).padding(.horizontal, 10).padding(.vertical, 4)
                 .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.15)))
         }
-        .buttonStyle(.plain).handCursor()
+        .buttonStyle(.plainHand).handCursor()
     }
 }
 
 // MARK: - Backgrounds
 
 enum BackgroundStyle: String, CaseIterable, Identifiable {
-    case dots, aurora, liquid, halftone, tide
+    case dots, halftone, tide
     var id: String { rawValue }
     var title: String {
         switch self {
         case .dots: return "Dot grid"
-        case .aurora: return "Pixel aurora"
-        case .liquid: return "Liquid glass"
         case .halftone: return "Halftone"
         case .tide: return "Tide lines"
         }
@@ -325,8 +344,6 @@ enum BackgroundStyle: String, CaseIterable, Identifiable {
     var file: String? {
         switch self {
         case .dots: return nil
-        case .aurora: return "bg-aurora@2x.png"
-        case .liquid: return "bg-liquid@2x.jpg"
         case .halftone: return "bg-halftone@2x.png"
         case .tide: return "bg-tide@2x.png"
         }
@@ -347,7 +364,7 @@ enum Art {
     }
 }
 
-/// Window canvas: dot grid or the chosen background (Night sea in dark mode).
+/// Window canvas: dot grid or the chosen background (Deep sea in dark mode).
 struct AppBackground: View {
     @Environment(\.colorScheme) private var scheme
     let style: BackgroundStyle
@@ -357,7 +374,7 @@ struct AppBackground: View {
             ZStack(alignment: .top) {
                 DS.app
                 if scheme == .dark {
-                    if let img = Art.image("bg-night@2x.png") {
+                    if let img = Art.image("bg-deepsea@2x.png") {
                         Image(nsImage: img).resizable().scaledToFill().frame(width: geo.size.width, height: geo.size.height).clipped()
                     }
                 } else if let f = style.file, let img = Art.image(f) {
@@ -486,7 +503,7 @@ struct MicButton: View {
             .frame(width: size, height: size)
             .shadow(color: .black.opacity(0.2), radius: 1.5, y: 1)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHand)
         .help(active ? "Stop listening" : "Search by voice (⌥⌘F)")
     }
 }

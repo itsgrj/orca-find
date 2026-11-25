@@ -1,4 +1,4 @@
-# Contributing to Orca Find
+# Contributing to OrcaFind
 
 Thanks for taking the time to help.
 
@@ -7,7 +7,7 @@ Thanks for taking the time to help.
 [Open a bug report](https://github.com/itsgrj/orca-find/issues/new?template=bug_report.yml) and include:
 
 - your macOS version and Mac (Apple silicon or Intel)
-- the Orca Find version, from **Orca Find › About**
+- the OrcaFind version, from **OrcaFind › About**
 - what you did, what you expected and what happened
 - a screenshot or screen recording if it helps
 
@@ -19,7 +19,7 @@ Please don't attach files that hold private information. Orca never needs your f
 
 ## Pull requests
 
-Orca Find is not open source (see [LICENSE](LICENSE)), so please open an issue and agree the change before writing code. Small fixes such as typos are fine to send straight away.
+OrcaFind is not open source (see [LICENSE](LICENSE)), so please open an issue and agree the change before writing code. Small fixes such as typos are fine to send straight away.
 
 When you do send one:
 
@@ -28,4 +28,4 @@ When you do send one:
 - keep on-screen text plain and short, and never show how something is computed to the person using the app
 - write the commit message in plain English: what changed and why
 
-By opening a pull request you agree that the change can be included in Orca Find under its licence.
+By opening a pull request you agree that the change can be included in OrcaFind under its licence.

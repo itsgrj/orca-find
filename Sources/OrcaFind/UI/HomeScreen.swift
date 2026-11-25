@@ -106,7 +106,11 @@ struct SearchCard: View {
         insertion: .opacity.animation(.easeOut(duration: 0.16).delay(0.2)),
         removal: .opacity.animation(.easeOut(duration: 0.06)))
 
-    private let examples = ["the PDF with the blue cover", "screenshots with wifi password", "that photo of a dog at the beach",
+    /// The grey example in the box: this Mac's own suggestions once they're ready.
+    private var examples: [String] {
+        state.suggestions == Suggestions.general ? Self.generalExamples : state.suggestions.map(\.text)
+    }
+    private static let generalExamples = ["the PDF with the blue cover", "screenshots with wifi password", "that photo of a dog at the beach",
                             "pdfs from last week over 5 mb", "photos of receipts from last month", "invoices from gmail"]
 
     var body: some View {
@@ -117,7 +121,7 @@ struct SearchCard: View {
                 // Font size snaps between values; scale instead so the glyph shrinks smoothly with the card.
                 Image(systemName: "magnifyingglass").font(.system(size: 19, weight: .medium)).foregroundStyle(DS.text2)
                     .scaleEffect(compact ? 16.0 / 19.0 : 1)
-                TextField("", text: $st.searchText, prompt: Text("Try “\(examples[exampleIndex])”").foregroundStyle(DS.text3))
+                TextField("", text: $st.searchText, prompt: Text("Try “\(examples[exampleIndex % examples.count])”").foregroundStyle(DS.text3))
                     .textFieldStyle(.plain)
                     .font(DS.searchLG)
                     .foregroundStyle(DS.text)
@@ -127,7 +131,7 @@ struct SearchCard: View {
                 if listening { VoiceLevelView(level: state.voice.level) }
                 if !state.searchText.isEmpty {
                     Button { state.searchText = ""; focused = true } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(DS.text3) }
-                        .buttonStyle(.plain).help("Clear")
+                        .buttonStyle(.plainHand).help("Clear")
                 }
                 if !compact { Kbd("⇧⌘Space").transition(Self.swap) }
                 if state.prefs.voiceEnabled {
@@ -185,9 +189,8 @@ struct SearchCard: View {
                 VStack(alignment: .leading, spacing: 10) {
                     PixelLabel("Try asking")
                     FlowLayout(spacing: 8) {
-                        ForEach(Array(zip(["that tiger photo I downloaded", "photos of receipts", "the PDF with the blue cover", "whiteboard photos from last week", "screenshots with wifi password"],
-                                           ["photo", "sparkles", "doc.richtext", "rectangle.and.pencil.and.ellipsis", "text.viewfinder"])), id: \.0) { text, icon in
-                            Button { state.searchText = text } label: { Chip(label: text, symbol: icon) }.buttonStyle(.plain)
+                        ForEach(state.suggestions, id: \.text) { s in
+                            Button { state.searchText = s.text } label: { Chip(label: s.text, symbol: s.symbol) }.buttonStyle(.plainHand)
                         }
                     }
                 }
@@ -239,16 +242,16 @@ struct FilterMenus: View {
                     Button("Any kind") { st.filters.category = nil }
                     ForEach(FileCategory.allCases) { c in Button(c.title) { st.filters.category = c } }
                 } label: { Chip(label: state.filters.category?.title ?? "Any kind", symbol: "square.stack.3d.up", style: state.filters.category == nil ? .normal : .selected, menu: true) }
-                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                    .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor()
             }
             Menu {
                 ForEach(DatePreset.allCases) { d in Button(d.title) { st.filters.date = d } }
             } label: { Chip(label: state.filters.date.title, symbol: "calendar", style: state.filters.date == .any ? .normal : .selected, menu: true) }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor()
             Menu {
                 ForEach(SizePreset.allCases) { s in Button(s.title) { st.filters.size = s } }
             } label: { Chip(label: state.filters.size.title, symbol: "scalemass", style: state.filters.size == .any ? .normal : .selected, menu: true) }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor()
             Menu {
                 Button("Anywhere") { st.filters.sourceKey = nil }
                 Divider()
@@ -257,7 +260,7 @@ struct FilterMenus: View {
                 Chip(label: state.filters.sourceKey.flatMap { k in state.homeStats.sources.first { $0.id == k }?.source.name }.map { "From " + $0 } ?? "From anywhere",
                      symbol: "arrow.down.circle", style: state.filters.sourceKey == nil ? .normal : .selected, menu: true)
             }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor()
         }
     }
 }
@@ -335,7 +338,7 @@ struct HomeExtras: View {
             .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHand)
         .handCursor()
     }
 }
@@ -403,7 +406,7 @@ struct SearchResults: View {
                                        message: "Try removing a chip, or say it differently — for example “zips from last year”.",
                                        actions: AnyView(HStack {
                                            if let last = state.parsed.chips.last {
-                                               Button("Remove “\(last.label)”") { state.removeChip(last) }.buttonStyle(.secondary)
+                                               Button("Remove \(last.quoted)") { state.removeChip(last) }.buttonStyle(.secondary)
                                            }
                                            Button("Clear filters") { state.filters = BrowserFilters() }.buttonStyle(.primary)
                                        }))
@@ -486,7 +489,7 @@ struct SortMenu: View {
                 }
             }
         } label: { Chip(label: "Sort: \(state.sort.field == .relevance ? "Best match" : state.sort.field.title)", symbol: "line.3.horizontal.decrease", menu: true) }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize().handCursor()
     }
 }
 

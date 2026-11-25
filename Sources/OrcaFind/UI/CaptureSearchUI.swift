@@ -20,9 +20,9 @@ struct CaptureSearchSection: View {
                         state.capturesQuery = terms.joined(separator: " ")
                         state.navigate(.captures)
                     } label: {
-                        Text(hits.count > 1 ? "See all in Captures →" : "Open Captures →").font(DS.caption).foregroundStyle(DS.link)
+                        Text(hits.count > 1 ? "See all in Context Capture →" : "Open Context Capture →").font(DS.caption).foregroundStyle(DS.link)
                     }
-                    .buttonStyle(.plain).handCursor()
+                    .buttonStyle(.plainHand).handCursor()
                 }
                 BestCaptureCard(capture: best, terms: terms, wide: width > 760)
                 let rest = Array(hits.dropFirst().prefix(width > 1100 ? 4 : 3))

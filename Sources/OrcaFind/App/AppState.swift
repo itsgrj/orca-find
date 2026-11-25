@@ -15,7 +15,10 @@ enum AppSection: Hashable {
         }
     }
 
-    enum Tab: String, CaseIterable { case home = "Home", captures = "Captures", library = "Library", downloads = "Downloads", tidy = "Tidy" }
+    enum Tab: String, CaseIterable { case home = "Home", captures = "Captures", library = "Library", downloads = "Downloads", tidy = "Tidy"
+        /// What the tab bar says: short on purpose. The Captures page itself is headed "Context Capture".
+        var title: String { rawValue }
+    }
 
     var tab: Tab {
         switch self {
@@ -204,6 +207,14 @@ final class AppState {
     private(set) var visibleSize: Int64 = 0
     private(set) var isRefreshing = false
     private(set) var homeStats = HomeStats()
+    /// Home's "Try asking" chips, made from what's on this Mac (the general ones until the first look is done).
+    private(set) var suggestions: [Suggestion] = {
+        guard let data = UserDefaults.standard.data(forKey: "homeSuggestions"),
+              let list = try? JSONDecoder().decode([Suggestion].self, from: data), !list.isEmpty else { return Suggestions.general }
+        return list
+    }()
+    @ObservationIgnored private var suggestionsBuilt: Date?
+    @ObservationIgnored private var suggestionsTask: Task<Void, Never>?
     private(set) var pinnedPreviews: [String: (items: [FileItem], count: Int)] = [:]
     private(set) var folderStats: [UUID: SmartFolderStats] = [:]
     /// When the open smart folder was last looked at before now (its "New" badges compare against this).
@@ -536,9 +547,12 @@ final class AppState {
         guard !Task.isCancelled, section == self.section else { return }
         setVisible(result)
         isRefreshing = false
-        if section == .search, let first = result.first, !result.contains(where: { selection.contains($0.id) }) {
-            selection = [first.id]
-            anchorID = first.id
+        // The preview only ever shows something in the current results: when the selected file drops out,
+        // move to the top result, and when nothing matches, show no preview at all (an old match left on
+        // screen reads as if it matched what's typed now).
+        if section == .search, !result.contains(where: { selection.contains($0.id) }) {
+            selection = result.first.map { [$0.id] } ?? []
+            anchorID = result.first?.id
         }
     }
 
@@ -579,6 +593,24 @@ final class AppState {
             self.homeStats = stats
             self.pinnedPreviews = previews
             self.folderStats = counts
+            self.scheduleSuggestions()
+        }
+    }
+
+    /// Rebuilds the "Try asking" chips once the scan is done: on each launch, then at most every 20 minutes
+    /// as pictures get looked at and new files arrive.
+    private func scheduleSuggestions() {
+        guard !index.isScanning, suggestionsTask == nil else { return }
+        if let last = suggestionsBuilt, Date().timeIntervalSince(last) < 20 * 60 { return }
+        let items = index.items
+        let stats = homeStats
+        suggestionsTask = Task { @MainActor in
+            let list = await Task.detached(priority: .utility) { Suggestions.build(items: items, stats: stats) }.value
+            self.suggestionsTask = nil
+            self.suggestionsBuilt = Date()
+            guard list != self.suggestions else { return }
+            self.suggestions = list
+            if let data = try? JSONEncoder().encode(list) { UserDefaults.standard.set(data, forKey: "homeSuggestions") }
         }
     }
 
@@ -819,7 +851,7 @@ final class AppState {
         case .home: return section == .search ? "Search" : "Home"
         case .library: return section == .library ? "Library" : "Library › \(here)"
         case .tidy: return section == .cleanUp ? "Tidy" : "Tidy › \(here)"
-        default: return section.tab.rawValue
+        default: return section.tab.title
         }
     }
 
@@ -859,7 +891,7 @@ final class AppState {
         if section == .folder(path) { navigate(.home) }
     }
 
-    /// ⌘↩ from Quick Search: show the file inside Orca Find, in its folder, selected.
+    /// ⌘↩ from Quick Search: show the file inside OrcaFind, in its folder, selected.
     func revealInApp(_ item: FileItem) {
         openMainWindow()
         navigate(.folder(item.parentPath))
@@ -1007,7 +1039,7 @@ final class AppState {
         case .smartFolder(let id): return folder(id)?.name ?? "Smart folder"
         case .folder(let p): return FileManager.default.displayName(atPath: p)
         case .search: return "Results"
-        case .captures: return "Captures"
+        case .captures: return "Context Capture"
         case .capture(let id): return CaptureLibrary.shared.capture(id)?.title ?? "Capture"
         }
     }

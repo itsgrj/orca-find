@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Orca Find</title>
+<title>OrcaFind</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Find any file on your Mac by asking for it. Orca Find reads file names, the text inside files and screenshots, and where every download came from.">
+<meta name="description" content="Find any file on your Mac by asking for it. OrcaFind reads file names, the text inside files and screenshots, and where every download came from.">
 <link rel="icon" href="assets/app-icon-64.png">
 <style>
-/* Layout: a night-ocean hero that folds into a working demo window, then calm full-width bands on near-black, every visual a real Orca Find screen. */
+/* Layout: a night-ocean hero that folds into a working demo window, then calm full-width bands on near-black, every visual a real OrcaFind screen. */
 @font-face {
   font-family: "Geist Pixel";
   src: url("assets/GeistPixel-Square.woff2") format("woff2");
@@ -600,7 +600,7 @@ footer { border-top: 1px solid var(--border); padding-block: 56px 40px; }
 <body>
 
 <header class="site-head">
-  <a class="logo" href="#top" aria-label="Orca Find home"><img src="assets/app-icon-64.png" alt="" width="28" height="28">orca find</a>
+  <a class="logo" href="#top" aria-label="OrcaFind home"><img src="assets/app-icon-64.png" alt="" width="28" height="28">orcafind</a>
   <nav class="pill-nav" aria-label="Main">
     <a href="#top" class="on keep" data-nav="top">Home</a>
     <a href="#features" data-nav="features">Features</a>
@@ -619,7 +619,7 @@ footer { border-top: 1px solid var(--border); padding-block: 56px 40px; }
 
 <main>
 <!-- ================= HERO ================= -->
-<section class="hero" id="top" aria-label="Orca Find">
+<section class="hero" id="top" aria-label="OrcaFind">
   <div class="stage">
     <div class="scene" id="scene">
       <canvas id="sky" aria-hidden="true"></canvas>
@@ -644,11 +644,11 @@ footer { border-top: 1px solid var(--border); padding-block: 56px 40px; }
         <button class="play-btn" type="button" data-play><span><span class="px-icon" data-i="play"></span></span>Play demo</button>
       </div>
 
-      <div class="demo-wrap" id="demo" aria-label="Orca Find demo">
+      <div class="demo-wrap" id="demo" aria-label="OrcaFind demo">
         <div class="win" id="win">
           <div class="win-bar">
             <div class="lights"><i></i><i></i><i></i></div>
-            <div class="win-brand"><span class="px-icon" data-i="search"></span>orca find</div>
+            <div class="win-brand"><span class="px-icon" data-i="search"></span>orcafind</div>
             <div class="win-tabs"><span class="on">Home</span><span>Captures</span><span>Library</span><span>Downloads</span><span>Tidy</span></div>
             <div class="win-tools"><span class="px-icon" data-i="folder"></span><span class="px-icon" data-i="moon"></span><span class="px-icon" data-i="gear"></span></div>
           </div>
@@ -836,7 +836,7 @@ footer { border-top: 1px solid var(--border); padding-block: 56px 40px; }
   <div class="wrap sec-head center">
     <span class="eyebrow" style="color:var(--link)">Tour</span>
     <h2 class="h2" id="tour-h">Every screen, as it ships</h2>
-    <p class="lede">Real screenshots of Orca Find, in light and dark.</p>
+    <p class="lede">Real screenshots of OrcaFind, in light and dark.</p>
   </div>
   <div class="tour-rail" id="tourRail"></div>
   <div class="pager" id="pager" role="tablist" aria-label="Tour screens"><span class="ind" id="pagerInd"></span></div>
@@ -948,7 +948,7 @@ footer { border-top: 1px solid var(--border); padding-block: 56px 40px; }
 <footer>
   <div class="wrap">
     <div class="foot-top">
-      <a class="logo" href="#top"><img src="assets/app-icon-64.png" alt="" width="28" height="28">orca find<small>© 2026</small></a>
+      <a class="logo" href="#top"><img src="assets/app-icon-64.png" alt="" width="28" height="28">orcafind<small>© 2026</small></a>
     </div>
     <div class="foot-cols">
       <div><h4>Product</h4><ul><li><a href="#top">Download</a></li><li><a href="#features">Features</a></li><li><a href="#captures">Captures</a></li><li><a href="#pricing">Pricing</a></li></ul></div>
@@ -962,7 +962,7 @@ footer { border-top: 1px solid var(--border); padding-block: 56px 40px; }
         <div class="msg" id="signupMsg" aria-live="polite"></div>
       </div>
     </div>
-    <div class="wordmark" aria-hidden="true">orca find</div>
+    <div class="wordmark" aria-hidden="true">orcafind</div>
   </div>
 </footer>
 
@@ -1389,7 +1389,7 @@ const TOUR = [
 ];
 const tour = (() => {
   const railEl = $('#tourRail'), pager = $('#pager'), ind = $('#pagerInd');
-  railEl.innerHTML = TOUR.map(([f, t, d], i) => `<figure class="tour-item${i ? '' : ' cur'}"><div class="shot-frame"><img src="assets/screens/${f}.webp" alt="${t} screen of Orca Find${d ? ': ' + d : ''}" width="1600" height="1075" loading="lazy"></div><figcaption>${t}<span>${d}</span></figcaption></figure>`).join('');
+  railEl.innerHTML = TOUR.map(([f, t, d], i) => `<figure class="tour-item${i ? '' : ' cur'}"><div class="shot-frame"><img src="assets/screens/${f}.webp" alt="${t} screen of OrcaFind${d ? ': ' + d : ''}" width="1600" height="1075" loading="lazy"></div><figcaption>${t}<span>${d}</span></figcaption></figure>`).join('');
   pager.insertAdjacentHTML('beforeend', TOUR.map(([, t], i) => `<button type="button" role="tab" aria-label="${t}" aria-selected="${i === 0}" data-go="${i}"></button>`).join(''));
   const items = $$('.tour-item', railEl), dots = $$('[data-go]', pager);
   let cur = 0;

@@ -84,9 +84,9 @@ struct DownloadsScreen: View {
                 Text(selectedKey.flatMap { k in state.homeStats.sources.first { $0.id == k }?.source.name }.map { "From \($0)" } ?? "All downloads")
                     .font(DS.body).foregroundStyle(DS.text)
                 Spacer()
-                Button { state.navigate(.downloadedFrom(nil)) } label: { Chip(label: "All", symbol: "arrow.down.circle", style: selectedKey == nil ? .selected : .normal) }.buttonStyle(.plain)
+                Button { state.navigate(.downloadedFrom(nil)) } label: { Chip(label: "All", symbol: "arrow.down.circle", style: selectedKey == nil ? .selected : .normal) }.buttonStyle(.plainHand)
                 ForEach(state.homeStats.sources.prefix(5)) { s in
-                    Button { state.navigate(.downloadedFrom(s.id)) } label: { Chip(label: s.source.name, style: selectedKey == s.id ? .selected : .normal) }.buttonStyle(.plain)
+                    Button { state.navigate(.downloadedFrom(s.id)) } label: { Chip(label: s.source.name, style: selectedKey == s.id ? .selected : .normal) }.buttonStyle(.plainHand)
                 }
                 SortMenu()
                 Picker(selection: $groupBy) {
@@ -182,7 +182,7 @@ struct SortPlanSheet: View {
                             }
                             .padding(.horizontal, 14).padding(.vertical, 10).contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.plainHand)
                         if open.contains(g.id) {
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(g.files.prefix(40)) { f in
@@ -243,7 +243,7 @@ struct DownloadRow: View {
             Group { if let s = item.source { Badge(s.name, tone: s.isWebsite ? .neutral : .info) } else { Text("") } }.frame(width: 130, alignment: .leading)
             Text(Fmt.size(item.size)).font(DS.bodySM).foregroundStyle(DS.text2).frame(width: 80, alignment: .leading)
             Text(Fmt.relative(item.added ?? item.activityDate)).font(DS.bodySM).foregroundStyle(DS.text2).frame(width: 110, alignment: .leading)
-            Button { FileActions.revealInFinder([item]) } label: { Image(systemName: "folder").foregroundStyle(DS.text2) }.buttonStyle(.plain).frame(width: 20).help("Show in Finder")
+            Button { FileActions.revealInFinder([item]) } label: { Image(systemName: "folder").foregroundStyle(DS.text2) }.buttonStyle(.plainHand).frame(width: 20).help("Show in Finder")
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(selected ? DS.focus.opacity(0.12) : Color.clear)
@@ -438,7 +438,8 @@ struct TidyScreen: View {
                 ToneIcon(symbol: kind.symbol, tone: tones[kind] ?? .neutral, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(kind.title).font(DS.body).foregroundStyle(DS.text)
-                    Text(kind.detail).font(DS.caption).foregroundStyle(DS.text2).lineLimit(2)
+                    // Always two lines tall, so a one-line description doesn't make a shorter card.
+                    Text(kind.detail).font(DS.caption).foregroundStyle(DS.text2).lineLimit(2, reservesSpace: true)
                 }
                 Spacer(minLength: 4)
                 if checking { ProgressView().controlSize(.small) } else { Text(size > 0 ? Fmt.size(size) : "—").font(DS.stat).foregroundStyle(DS.text) }
@@ -471,6 +472,8 @@ struct TidyScreen: View {
                     .buttonStyle(.secondary).disabled(count == 0 || checking)
                 }
             }
+            // Same height with or without thumbnails, so "All clear" cards line up with the rest.
+            .frame(height: 48)
         }
         .padding(16).card(16)
         .overlay(alignment: .topTrailing) {
@@ -549,8 +552,8 @@ struct ReviewScreen: View {
                                     Badge(c.note, tone: c.note.contains("installed") && !c.note.contains("Not") ? .success : .neutral).frame(width: 260, alignment: .leading)
                                     Text(Fmt.size(c.item.size)).font(DS.bodySM).foregroundStyle(DS.text2).frame(width: 80, alignment: .leading)
                                     HStack(spacing: 8) {
-                                        Button { state.previewItem = c.item } label: { Image(systemName: "eye") }.buttonStyle(.plain)
-                                        Button { FileActions.revealInFinder([c.item]) } label: { Image(systemName: "folder") }.buttonStyle(.plain)
+                                        Button { state.previewItem = c.item } label: { Image(systemName: "eye") }.buttonStyle(.plainHand)
+                                        Button { FileActions.revealInFinder([c.item]) } label: { Image(systemName: "folder") }.buttonStyle(.plainHand)
                                     }
                                     .foregroundStyle(DS.text2).frame(width: 40)
                                 }
@@ -584,7 +587,7 @@ struct ReviewScreen: View {
             }
             .frame(width: 16, height: 16)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.plainHand)
     }
 }
 
@@ -635,7 +638,7 @@ struct DuplicatesScreen: View {
             Text(label).font(DS.bodySM).foregroundStyle(on ? DS.text : DS.text2)
                 .padding(.horizontal, 10).padding(.vertical, 4)
                 .background(RoundedRectangle(cornerRadius: 7).fill(on ? DS.surface : .clear))
-        }.buttonStyle(.plain)
+        }.buttonStyle(.plainHand)
     }
 
     private func groupCard(_ g: DuplicateGroup) -> some View {
@@ -648,7 +651,7 @@ struct DuplicatesScreen: View {
                         RoundedRectangle(cornerRadius: 4).strokeBorder(g.included ? .clear : DS.borderStrong)
                         if g.included { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(DS.onBrand) }
                     }.frame(width: 16, height: 16)
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plainHand)
                 Badge(label.0, tone: label.1)
                 Text("\(Fmt.plural(g.items.count, "copy", "copies")) · frees \(Fmt.size(g.reclaimable))").font(DS.body).foregroundStyle(DS.text)
                 Spacer()

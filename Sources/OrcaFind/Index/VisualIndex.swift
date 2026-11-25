@@ -184,6 +184,14 @@ final class VisualStore: @unchecked Sendable {
         return map.values.reduce(0) { n, v in n + (labels.contains { v.label($0) >= min } ? 1 : 0) }
     }
 
+    /// How many pictures show each label at least this strongly, most common first.
+    func labelCounts(min: Float) -> [(label: String, count: Int)] {
+        lock.lock(); defer { lock.unlock() }
+        var counts: [String: Int] = [:]
+        for v in map.values { for w in v.labels where w.value >= min { counts[w.name, default: 0] += 1 } }
+        return counts.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }.map { ($0.key, $0.value) }
+    }
+
     /// Labels that tend to appear in the same pictures as these ones ("tiger" → feline, animal):
     /// used for "similar things" suggestions and close matches. Learned from this Mac's photos.
     func related(to labels: [String], limit: Int = 4) -> [String] {

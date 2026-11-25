@@ -1,9 +1,9 @@
 #!/bin/zsh
-# Ships a new version of Orca Find to everyone who has it.
+# Ships a new version of OrcaFind to everyone who has it.
 #
 #   1. Bump CFBundleShortVersionString (e.g. 1.2.0) and CFBundleVersion (+1) in Resources/Info.plist.
 #   2. Write what got better, in plain words, in Resources/WhatsNew.json (same version number).
-#   3. tools/release.sh            → builds and signs build/Orca-Find.zip, the DMG and build/appcast.xml
+#   3. tools/release.sh            → builds and signs build/OrcaFind.zip, the DMG and build/appcast.xml
 #      tools/release.sh --publish  → also creates the GitHub release with all three attached
 #
 # Every installed Orca reads https://github.com/itsgrj/orca-find/releases/latest/download/appcast.xml once
@@ -27,16 +27,16 @@ if gh release view "v$VERSION" -R "$REPO" >/dev/null 2>&1 && [[ "${1:-}" == "--p
 fi
 
 ./build.sh release
-SIGNER="$(codesign -dvv "build/Orca Find.app" 2>&1 | sed -n 's/^Authority=//p' | head -1)"
+SIGNER="$(codesign -dvv "build/OrcaFind.app" 2>&1 | sed -n 's/^Authority=//p' | head -1)"
 [[ -n "$SIGNER" ]] || { echo "The app is only ad-hoc signed. Run tools/make_signing_cert.sh first, so people keep their permissions after updating."; exit 1; }
 ./tools/make_dmg.sh
 
-ZIP="build/Orca-Find.zip"
+ZIP="build/OrcaFind.zip"
 rm -f "$ZIP"
-ditto -c -k --sequesterRsrc --keepParent "build/Orca Find.app" "$ZIP"
+ditto -c -k --sequesterRsrc --keepParent "build/OrcaFind.app" "$ZIP"
 SIG="$("$SPARKLE/sign_update" --account orca-find "$ZIP")"   # sparkle:edSignature="…" length="…"
 
-URL="${ORCA_RELEASE_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download/v$VERSION}/Orca-Find.zip"
+URL="${ORCA_RELEASE_DOWNLOAD_BASE:-https://github.com/$REPO/releases/download/v$VERSION}/OrcaFind.zip"
 VERSION="$VERSION" BUILD="$BUILD" MINOS="$MINOS" SIG="$SIG" URL="$URL" REPO="$REPO" python3 - <<'PY'
 import json, os, html
 from email.utils import formatdate
@@ -47,10 +47,10 @@ items = "\n".join(
 appcast = f'''<?xml version="1.0" encoding="utf-8"?>
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
-    <title>Orca Find</title>
+    <title>OrcaFind</title>
     <link>https://github.com/{os.environ["REPO"]}/releases</link>
     <item>
-      <title>Orca Find {v}</title>
+      <title>OrcaFind {v}</title>
       <pubDate>{formatdate(usegmt=True)}</pubDate>
       <sparkle:version>{os.environ["BUILD"]}</sparkle:version>
       <sparkle:shortVersionString>{v}</sparkle:shortVersionString>
@@ -68,21 +68,21 @@ appcast = f'''<?xml version="1.0" encoding="utf-8"?>
 '''
 open("build/appcast.xml", "w").write(appcast)
 md = "\n".join(f'- **{n["title"]}.** {n["detail"]}' for n in notes)
-md += "\n\n**New here?** Download **Orca-Find-%s.dmg**, open it and drag Orca Find into Applications.\n" % v
+md += "\n\n**New here?** Download **OrcaFind-%s.dmg**, open it and drag OrcaFind into Applications.\n" % v
 md += "**Already have Orca?** It updates itself. Open the menu bar list or the Update button in the window.\n"
 open("build/release-notes.md", "w").write(md)
 PY
-echo "✓ build/appcast.xml, $ZIP, build/Orca-Find-$VERSION.dmg"
+echo "✓ build/appcast.xml, $ZIP, build/OrcaFind-$VERSION.dmg"
 
 if [[ "${1:-}" == "--publish" ]]; then
   # Draft first, then each file (a retried upload replaces instead of failing), then go live — so a slow
   # upload never leaves a half-published release that installed copies would try to read.
   gh release view "v$VERSION" -R "$REPO" >/dev/null 2>&1 || \
-    gh release create "v$VERSION" -R "$REPO" --draft --title "Orca Find $VERSION" --notes-file build/release-notes.md --target main
-  for f in build/appcast.xml "$ZIP" "build/Orca-Find-$VERSION.dmg"; do
+    gh release create "v$VERSION" -R "$REPO" --draft --title "OrcaFind $VERSION" --notes-file build/release-notes.md --target main
+  for f in build/appcast.xml "$ZIP" "build/OrcaFind-$VERSION.dmg"; do
     for try in 1 2 3; do gh release upload "v$VERSION" -R "$REPO" "$f" --clobber && break; sleep 5; done
   done
-  LEN="$(gh release view "v$VERSION" -R "$REPO" --json assets -q '.assets[] | select(.name=="Orca-Find.zip") | .size')"
+  LEN="$(gh release view "v$VERSION" -R "$REPO" --json assets -q '.assets[] | select(.name=="OrcaFind.zip") | .size')"
   [[ "$LEN" == "$(stat -f %z "$ZIP")" ]] || { echo "Uploaded zip size ($LEN) doesn't match; release left as a draft."; exit 1; }
   gh release edit "v$VERSION" -R "$REPO" --draft=false --latest
   echo "✓ Published. Every Orca checks within a day; the new version goes in when people quit Orca."

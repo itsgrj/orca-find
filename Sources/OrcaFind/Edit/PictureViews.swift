@@ -213,7 +213,8 @@ private struct TextDraftField: View {
             .textFieldStyle(.plain)
             .font(.system(size: font, weight: .semibold))
             .foregroundStyle(Color(nsColor: ws.penColor))
-            .frame(width: min(420, max(160, size.width - point.x * size.width - 8)), alignment: .leading)
+            // As wide as the room left on the picture: the text is drawn on one line, so the box shows exactly what will fit.
+            .frame(width: max(160, size.width - point.x * size.width - 8), alignment: .leading)
             .padding(2)
             .overlay(Rectangle().strokeBorder(DS.focus, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
             .offset(x: point.x * size.width, y: point.y * size.height)
@@ -310,7 +311,7 @@ struct PictureOptions: View {
                         .padding(.horizontal, 9).padding(.vertical, 5)
                         .foregroundStyle(DS.Tone.magic.fg)
                         .background(RoundedRectangle(cornerRadius: 7).fill(DS.Tone.magic.bg))
-                }.buttonStyle(.plain).handCursor().help("One tap: light and colour fixed for you")
+                }.buttonStyle(.plainHand).handCursor().help("One tap: light and colour fixed for you")
                 Spacer()
             }
             OptSlider(label: "Light", value: $ws.adj.light, range: -100...100)
@@ -330,7 +331,7 @@ struct PictureOptions: View {
                             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(on ? DS.focus : .clear, lineWidth: 2))
                             Text(look.name).font(.system(size: 8.5)).foregroundStyle(on ? DS.text : DS.text2).lineLimit(1)
                         }
-                    }.buttonStyle(.plain).handCursor()
+                    }.buttonStyle(.plainHand).handCursor()
                 }
             }
         }
@@ -358,7 +359,7 @@ struct PictureOptions: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         Image(systemName: "sparkles").font(.system(size: 11))
-                        Text("Unlock the Pro eraser").font(DS.bodySM)
+                        Text("Add the Pro eraser").font(DS.bodySM)
                     }
                     .foregroundStyle(DS.Tone.magic.fg)
                     Text("Removes bigger things in one stroke. Your photo never leaves this Mac. One time, \(PrivateAI.Skill.eraser.sizeLabel).")
@@ -367,7 +368,7 @@ struct PictureOptions: View {
                     case .unlocking(let f): ProgressView(value: f).tint(Color(hex: 0x7A4DE6)).controlSize(.small)
                     case .preparing: OptHint("Getting it ready…")
                     case .failed(let m): OptHint(m); OptButton("Try again", primary: true) { ai.unlock([.eraser]) }
-                    default: OptButton("Unlock · \(PrivateAI.Skill.eraser.sizeLabel)", symbol: "arrow.down.circle", primary: true) { ai.unlock([.eraser]) }
+                    default: OptButton("Add · \(PrivateAI.Skill.eraser.sizeLabel)", symbol: "arrow.down.circle", primary: true) { ai.unlock([.eraser]) }
                     }
                 }
                 .padding(10)
@@ -466,7 +467,7 @@ private struct BehindSwatch<Fill: View>: View {
                 .padding(2)
                 .overlay(Circle().strokeBorder(selected ? DS.focus : .clear, lineWidth: 2))
         }
-        .buttonStyle(.plain).handCursor().help(label)
+        .buttonStyle(.plainHand).handCursor().help(label)
     }
 }
 
@@ -547,7 +548,7 @@ struct PaletteStrip: View {
                     } label: {
                         RoundedRectangle(cornerRadius: 3).fill(Color(nsColor: c)).frame(width: 13, height: 13)
                             .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(ws.penColor == c ? DS.focus : DS.border, lineWidth: ws.penColor == c ? 2 : 1))
-                    }.buttonStyle(.plain).handCursor()
+                    }.buttonStyle(.plainHand).handCursor()
                 }
             }
         }
@@ -601,7 +602,7 @@ struct OptButton: View {
             .background(RoundedRectangle(cornerRadius: 7).fill(primary ? DS.brand : DS.surface))
             .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(primary ? .clear : DS.border))
         }
-        .buttonStyle(.plain).handCursor()
+        .buttonStyle(.plainHand).handCursor()
     }
 }
 
@@ -618,7 +619,7 @@ struct OptChoice: View {
                         .frame(maxWidth: .infinity).padding(.vertical, 4)
                         .background(RoundedRectangle(cornerRadius: 5).fill(o == selection ? DS.surface : .clear))
                         .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(o == selection ? DS.border : .clear))
-                }.buttonStyle(.plain).handCursor()
+                }.buttonStyle(.plainHand).handCursor()
             }
         }
         .padding(2)

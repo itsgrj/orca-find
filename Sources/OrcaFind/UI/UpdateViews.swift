@@ -32,7 +32,7 @@ struct UpdatePill: View {
                 .background(Capsule().fill(updateBlue))
                 .contentShape(Capsule())
             }
-            .buttonStyle(.plain).handCursor()
+            .buttonStyle(.plainHand).handCursor()
             .popover(isPresented: $u.popoverOpen, arrowEdge: .bottom) { UpdatePopover() }
             .help("A better version of Orca is ready")
         }
@@ -193,7 +193,7 @@ struct UpdateCornerCard: View {
                 Button { up.closeCard() } label: {
                     Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)).foregroundStyle(DS.text3).frame(width: 18, height: 18).contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).handCursor().help("Hide until the next update")
+                .buttonStyle(.plainHand).handCursor().help("Hide until the next update")
             }
             HStack(spacing: 8) {
                 Button(up.isReady ? "Restart to update" : "Update now") { up.updateNow() }.buttonStyle(.primary)
@@ -227,11 +227,11 @@ struct UpdateReadyToast: View {
                     .padding(.horizontal, 12).padding(.vertical, 5)
                     .background(Capsule().fill(updateBlue))
             }
-            .buttonStyle(.plain).handCursor()
+            .buttonStyle(.plainHand).handCursor()
             Button { up.closeToast() } label: {
                 Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(DS.onDark2).frame(width: 16, height: 16).contentShape(Rectangle())
             }
-            .buttonStyle(.plain).handCursor()
+            .buttonStyle(.plainHand).handCursor()
         }
     }
 }
@@ -260,7 +260,7 @@ struct WelcomeBackCard: View {
                     Button("See everything that changed") {
                         NSWorkspace.shared.open(Updater.releasesPage.appendingPathComponent("tag/v\(up.currentVersion)"))
                     }
-                    .buttonStyle(.plain).font(DS.body).foregroundStyle(DS.link).handCursor()
+                    .buttonStyle(.plainHand).font(DS.body).foregroundStyle(DS.link).handCursor()
                     Spacer()
                     Button("Got it") { up.dismissWelcome() }.buttonStyle(.primary).keyboardShortcut(.defaultAction)
                 }

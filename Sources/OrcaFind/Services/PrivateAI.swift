@@ -43,9 +43,9 @@ final class PrivateAI {
         }
         var unlockedToast: String {
             switch self {
-            case .photos: return "Photo understanding unlocked. Try “our holiday by the sea”."
-            case .eraser: return "Pro eraser unlocked. Open a photo and paint over anything."
-            case .voice: return "Voice unlocked. Voice notes now get names and numbers right."
+            case .photos: return "Photo understanding added. Try “our holiday by the sea”."
+            case .eraser: return "Pro eraser added. Open a photo and paint over anything."
+            case .voice: return "Clearer voice added. Voice notes now get names and numbers right."
             }
         }
         /// The voice model only runs on Apple silicon and only understands English.

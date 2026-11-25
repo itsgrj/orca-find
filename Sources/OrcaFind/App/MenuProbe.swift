@@ -1,7 +1,7 @@
 import SwiftUI
 import ScreenCaptureKit
 
-/// Dev only: `open -n "build/Orca Find.app" --args --menu-probe <outdir>`
+/// Dev only: `open -n "build/OrcaFind.app" --args --menu-probe <outdir>`
 /// Opens the menu bar dropdown over a dark and a bright backdrop, in light and dark appearance,
 /// screenshots each (needs the app's Screen Recording permission) and writes the panel's view tree.
 @MainActor
@@ -128,11 +128,6 @@ private struct DarkAppBackdrop: View {
 
 private struct BrightBackdrop: View {
     var body: some View {
-        if let url = Bundle.main.url(forResource: "bg-liquid@2x", withExtension: "jpg", subdirectory: "Backgrounds"),
-           let img = NSImage(contentsOf: url) {
-            Image(nsImage: img).resizable().scaledToFill()
-        } else {
-            LinearGradient(colors: [.pink, .yellow, .mint, .blue], startPoint: .topLeading, endPoint: .bottomTrailing)
-        }
+        LinearGradient(colors: [.pink, .yellow, .mint, .blue], startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 }
