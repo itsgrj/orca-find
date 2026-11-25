@@ -4,7 +4,8 @@ import ApplicationServices
 /// Reads the browser page the way a screen reader does (macOS Accessibility), right when the drag ends:
 /// - the link under the box you dragged, so a grab from a feed keeps the pin / post / video itself, not the feed;
 /// - where a YouTube video was, so its link reopens at that moment;
-/// - the page address in browsers AppleScript can't ask (Firefox, Zen…).
+/// - the page address in browsers AppleScript can't ask (Firefox, Zen…);
+/// - the picture under the mouse while the capture shortcut is on screen, so one click saves just that picture.
 /// Needs no browser settings, only Orca being allowed under Privacy & Security › Accessibility.
 /// Everything here is blocking IPC, so call `inspect` off the main thread.
 enum PageInspector {
@@ -60,6 +61,82 @@ enum PageInspector {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.25)
         return webArea(in: app, box: CGRect(x: -1e5, y: -1e5, width: 2e5, height: 2e5)).flatMap(frame)
+    }
+
+    // MARK: The picture under the mouse
+
+    /// One picture on the page: where it is on screen (Accessibility coordinates, clipped to the visible page),
+    /// the picture's own file, and the words the site gives it.
+    struct Picture: Sendable, Equatable {
+        var frame: CGRect
+        var url: String?
+        var label: String?
+        /// The page it's on (sent along when fetching the picture; some sites only hand pictures to their own pages).
+        var pageURL: String?
+        /// The app showing it.
+        var pid: pid_t = 0
+        /// How rounded its corners look on screen, in points (measured by RegionGrabber; pages don't say).
+        var cornerRadius: CGFloat = 0
+    }
+
+    /// The picture under `point` (Accessibility coordinates), if the mouse is over one on a web page.
+    /// Sites often lay buttons and shading over a picture (Pinterest's Save, hover icons), so the element
+    /// under the mouse is usually not the picture itself: look around it for a picture that covers the point.
+    /// Blocking IPC, about 10–60 ms; call off the main thread.
+    static func picture(pid: pid_t, at point: CGPoint) -> Picture? {
+        guard pid > 0, isAllowed else { return nil }
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.15)
+        var hitRef: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(app, Float(point.x), Float(point.y), &hitRef) == .success,
+              let hit = hitRef else { return nil }
+
+        // Only pictures inside the page count; the browser's own toolbar has pictures too.
+        var chain: [AXUIElement] = []
+        var page: AXUIElement?
+        var e: AXUIElement? = hit
+        while let cur = e, chain.count < 60 {
+            if string(cur, kAXRoleAttribute) == "AXWebArea" { page = cur; break }
+            chain.append(cur)
+            e = element(cur, kAXParentAttribute)
+        }
+        guard let page, let pageFrame = frame(page) else { return nil }
+
+        let deadline = Date().addingTimeInterval(0.12)
+        var budget = 700
+        func usable(_ img: AXUIElement) -> Picture? {
+            guard let f = frame(img) else { return nil }
+            let visible = f.intersection(pageFrame)
+            guard f.contains(point), visible.width >= 48, visible.height >= 48 else { return nil }
+            let label = [string(img, kAXDescriptionAttribute), string(img, kAXTitleAttribute)]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+            return Picture(frame: visible.integral, url: urlString(img, kAXURLAttribute), label: label,
+                           pageURL: urlString(page, kAXURLAttribute), pid: pid)
+        }
+        // From the element under the mouse outwards: the element itself, then each container's own pictures.
+        for (level, node) in chain.prefix(8).enumerated() {
+            if string(node, kAXRoleAttribute) == "AXImage", let p = usable(node) { return p }
+            var best: Picture?
+            var queue: [(AXUIElement, Int)] = [(node, 0)]
+            while !queue.isEmpty, budget > 0, Date() < deadline {
+                let (n, depth) = queue.removeFirst(); budget -= 1
+                if let f = frame(n), f.width > 0, f.height > 0, !f.contains(point) { continue }
+                if string(n, kAXRoleAttribute) == "AXImage", let p = usable(n) {
+                    if best == nil || p.frame.width * p.frame.height < best!.frame.width * best!.frame.height { best = p }
+                    continue
+                }
+                if depth < 6 + level { queue += children(n).map { ($0, depth + 1) } }
+            }
+            if let best { return best }
+            if budget <= 0 || Date() >= deadline { break }
+        }
+        return nil
+    }
+
+    /// Accessibility rect (top-left of the main screen) → AppKit global rect (bottom-left origin).
+    @MainActor static func appKitRect(_ r: CGRect) -> NSRect {
+        let h = NSScreen.screens.first?.frame.height ?? r.maxY
+        return NSRect(x: r.minX, y: h - r.maxY, width: r.width, height: r.height)
     }
 
     // MARK: Finding the page

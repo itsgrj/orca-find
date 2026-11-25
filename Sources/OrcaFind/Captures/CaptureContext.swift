@@ -36,6 +36,34 @@ struct CaptureContext {
         return c
     }
 
+    /// Where a capture came from when it isn't the app in front: the app whose window is under `point`
+    /// (Accessibility / window-list coordinates, top-left origin). Pointing at a picture in a browser
+    /// while another app is active is normal; the picture's app is the source.
+    static func app(pid: pid_t) -> CaptureContext {
+        var c = CaptureContext()
+        guard pid > 0, let app = NSRunningApplication(processIdentifier: pid) else { return c }
+        c.appName = app.localizedName
+        c.bundleID = app.bundleIdentifier
+        c.pid = pid
+        c.windowTitle = frontWindowTitle(pid: pid)
+        return c
+    }
+
+    /// The app owning the topmost normal window under `point` (top-left origin), not counting Orca's own.
+    static func windowOwner(at point: CGPoint) -> pid_t? {
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return nil }
+        let me = getpid()
+        for w in list { // front to back
+            guard (w[kCGWindowLayer as String] as? Int) == 0,
+                  let pid = w[kCGWindowOwnerPID as String] as? pid_t, pid != me,
+                  (w[kCGWindowAlpha as String] as? Double ?? 1) > 0.01,
+                  let b = w[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: b), rect.contains(point) else { continue }
+            return pid
+        }
+        return nil
+    }
+
     /// Title of the app's frontmost normal window (needs Screen Recording permission, which capturing has).
     static func frontWindowTitle(pid: pid_t) -> String? {
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] else { return nil }

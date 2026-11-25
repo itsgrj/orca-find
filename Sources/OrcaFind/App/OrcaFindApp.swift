@@ -160,6 +160,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             HotKeyCenter.shared.handler = { QuickSearchController.shared.toggle() }
             HotKeyCenter.shared.register(prefs.quickSearchHotKey)
             HotKeyCenter.shared.setHandler(.capture) { CaptureController.shared.start() }
+            CaptureLog.log("OrcaFind started · Accessibility \(PageInspector.isAllowed ? "allowed" : "NOT allowed") · Screen Recording \(ScreenGrab.hasPermission ? "allowed" : "NOT allowed")")
+            // A permission granted to an older, differently signed copy looks switched on in System Settings
+            // but doesn't count. Ask once per version, so the switch ends up on for this copy.
+            let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+            if !PageInspector.isAllowed, UserDefaults.standard.string(forKey: "askedPageAccessBuild") != build {
+                UserDefaults.standard.set(build, forKey: "askedPageAccessBuild")
+                PageInspector.askForAccess()
+            }
             ShareMenu.enableOnce()
             if prefs.capturesEnabled { HotKeyCenter.shared.register(prefs.captureHotKey, slot: .capture) }
             HotKeyCenter.shared.setHandler(.shelf) { DropShelfController.shared.toggle() }

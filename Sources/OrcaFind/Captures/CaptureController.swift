@@ -175,28 +175,56 @@ final class CaptureController {
             return
         }
         hideSaved()
-        let context = CaptureContext.snapshot()
+        let front = CaptureContext.snapshot()
         // Ask the browser for the page while the person is still dragging.
-        let pageFetch: Task<(url: String, title: String?)?, Never>? = context.bundleID.flatMap { id in
+        let frontFetch: Task<(url: String, title: String?)?, Never>? = front.bundleID.flatMap { id in
             CaptureContext.browsers[id] == nil ? nil : Task { await CaptureContext.fetchPage(bundleID: id) }
         }
-        let pid = context.pid
-        if context.isBrowser { Task.detached(priority: .userInitiated) { PageInspector.wake(pid: pid) } }
-        RegionGrabber.shared.begin { [weak self] rect, screen in
-            guard let self, let rect, let screen else { return }
+        if front.isBrowser { let pid = front.pid; Task.detached(priority: .userInitiated) { PageInspector.wake(pid: pid) } }
+        RegionGrabber.shared.begin { [weak self] grabbed in
+            guard let self, let grabbed else { return }
+            let rect = grabbed.rect, screen = grabbed.screen, picture = grabbed.picture
+            // The dimmed screen stays up (it's left out of every grab) and becomes the dim while you talk.
+            self.outline?.orderOut(nil)
+            self.outline = grabbed.cover
+            // A clicked picture can sit in a window behind the app in front (pointing at a pin while
+            // another app is active); then that window's app is where the capture came from.
+            var context = front
+            var pageFetch = frontFetch
+            if let picture, picture.pid > 0, picture.pid != front.pid {
+                context = CaptureContext.app(pid: picture.pid)
+                pageFetch = context.bundleID.flatMap { id in
+                    CaptureContext.browsers[id] == nil ? nil : Task { await CaptureContext.fetchPage(bundleID: id) }
+                }
+            }
+            let pid = context.pid
             // What's under the box (the pin, the post, where the video is) — read the moment the drag ends.
             let box = PageInspector.axRect(rect)
             let inspect: Task<PageInspector.Found, Never>? = context.isBrowser
                 ? Task.detached(priority: .userInitiated) { PageInspector.inspect(pid: pid, box: box) } : nil
             Task { @MainActor in
                 do {
-                    // Let the dimming overlay leave the screen before the picture is taken.
-                    try? await Task.sleep(nanoseconds: 60_000_000)
-                    let image = try await ScreenGrab.capture(rect: rect, on: screen)
+                    // A clicked picture is already cut from the still; a dragged box is grabbed now
+                    // (the dim isn't in it: Orca's own windows are left out).
+                    let image: CGImage
+                    if let still = grabbed.image { image = still } else { image = try await ScreenGrab.capture(rect: rect, on: screen) }
                     let s = CaptureSession(image: image, pointSize: rect.size, context: context)
                     self.session = s
-                    self.showStrip(for: rect, on: screen)
-                    if Preferences.shared.captureClips { self.startClip(s, rect: rect, screen: screen) }
+                    self.showStrip(for: rect, on: screen, cover: grabbed.cover)
+                    // A clicked picture: swap the screen grab for the picture's own file once it arrives
+                    // (no hover buttons on top). A still picture needs no clip.
+                    if let picture {
+                        if let url = picture.url {
+                            let shownPixels = CGFloat(image.width)
+                            Task { @MainActor in
+                                let original = await PictureFetch.image(from: url, referer: picture.pageURL, shown: rect.size)
+                                CaptureLog.log(original.map { "original picture \($0.width)×\($0.height) (screen grab was \(Int(shownPixels)) wide)" } ?? "original picture not available, keeping the screen grab")
+                                guard let original, CGFloat(original.width) >= shownPixels * 0.5,
+                                      self.session === s, s.mode != .saving else { return }
+                                s.image = original
+                            }
+                        }
+                    } else if Preferences.shared.captureClips { self.startClip(s, rect: rect, screen: screen) }
                     if pageFetch != nil || inspect != nil {
                         self.pageTask = Task { @MainActor in
                             let page = await pageFetch?.value ?? nil
@@ -696,7 +724,8 @@ final class CaptureController {
 
     // MARK: Strip window (V2 A — under the grab)
 
-    private func showStrip(for rect: NSRect, on screen: NSScreen, spotlight: Bool = true) {
+    /// `cover`: the capture overlay's dimmed screen, to keep as the spotlight instead of fading in a new one.
+    private func showStrip(for rect: NSRect, on screen: NSScreen, spotlight: Bool = true, cover: CapturePanel? = nil) {
         guard let s = session else { return }
         let vis = screen.visibleFrame
         let width = min(max(rect.width, 460), 640)
@@ -736,7 +765,11 @@ final class CaptureController {
         // Everything but the grab goes dark, with a purple edge around it, so it's clear what's being talked about.
         // It sits just under the strip and lets clicks through; the picture was already taken, so it isn't in it.
         // (Nothing was grabbed when it came from the Share menu: the card on the strip shows what's being saved.)
-        if spotlight {
+        if spotlight, let cover {
+            cover.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue - 1)
+            p.orderFrontRegardless()
+            outline = cover
+        } else if spotlight {
         let o = NSPanel(contentRect: screen.frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         o.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue - 1)
         o.isOpaque = false
@@ -1180,7 +1213,7 @@ final class GrabSpotlightView: NSView {
         let dim = NSBezierPath(rect: bounds)
         dim.append(NSBezierPath(roundedRect: edge, xRadius: 3, yRadius: 3))
         dim.windingRule = .evenOdd
-        NSColor.black.withAlphaComponent(0.45).setFill()
+        NSColor.black.withAlphaComponent(0.6).setFill()
         dim.fill()
         let border = NSBezierPath(roundedRect: edge.insetBy(dx: 1, dy: 1), xRadius: 3, yRadius: 3)
         border.lineWidth = 2
