@@ -438,11 +438,11 @@ enum MenuDay: Int, Comparable {
     /// The dropdown's heading when this is the newest stretch.
     var heading: String {
         switch self {
-        case .today: return "Downloaded today"
-        case .yesterday: return "Downloaded yesterday"
-        case .week: return "Downloaded this week"
-        case .month: return "Downloaded this month"
-        case .older: return "Latest downloads"
+        case .today: return "New today"
+        case .yesterday: return "New yesterday"
+        case .week: return "New this week"
+        case .month: return "New this month"
+        case .older: return "Latest files"
         }
     }
 
@@ -560,7 +560,7 @@ struct MenuBarView: View {
             .padding(.horizontal, 10).padding(.bottom, 6)
         }
         if items.isEmpty {
-            Text(state.index.isReady ? "Nothing downloaded yet" : "Getting ready…")
+            Text(state.index.isReady ? "Nothing new yet" : "Getting ready…")
                 .font(DS.bodySM).foregroundStyle(MenuLook.text2).frame(maxWidth: .infinity).padding(24)
         } else {
             downloadList(items, tab: tab, headed: all.first.map { MenuDay.of($0.added ?? $0.activityDate) })
@@ -607,9 +607,9 @@ struct MenuBarView: View {
     /// The bottom of the list: how far back it goes, and the way to everything else.
     private func listEnd(count: Int) -> some View {
         HStack(spacing: 6) {
-            Text(count >= 150 ? "Your 150 newest downloads" : "That’s everything from the past month")
+            Text(count >= 150 ? "Your 150 newest files" : "That’s everything from the past month")
                 .foregroundStyle(MenuLook.text2)
-            Button("See all downloads") { MenuBarController.shared.openApp { AppState.shared.navigate(.downloadedFrom(nil)) } }
+            Button("See all recent files") { MenuBarController.shared.openApp { AppState.shared.navigate(.recents) } }
                 .buttonStyle(.plainHand).foregroundStyle(DS.link).handCursor()
             Spacer(minLength: 0)
         }
@@ -622,7 +622,7 @@ struct MenuBarView: View {
             PixelLabel(title, color: .secondary)
             Spacer()
             if let trailing {
-                Button(trailing) { MenuBarController.shared.openApp { AppState.shared.navigate(.downloadedFrom(nil)) } }
+                Button(trailing) { MenuBarController.shared.openApp { AppState.shared.navigate(.recents) } }
                     .buttonStyle(.plainHand).font(DS.bodySM).foregroundStyle(DS.link).handCursor()
             }
         }
@@ -804,7 +804,11 @@ struct MenuDownloadRow: View {
                     .font(DS.caption).foregroundStyle(MenuLook.text2).lineLimit(1)
             }
             Spacer()
+            // Where it came from: the website for a download, otherwise the folder it landed in.
             if let s = item.source { Badge(s.name, tone: .info) }
+            else if item.rootName != "Downloads" {
+                Badge(item.url.deletingLastPathComponent().lastPathComponent).frame(maxWidth: 150, alignment: .trailing)
+            }
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
         .background(RoundedRectangle(cornerRadius: 8).fill(hovering ? MenuLook.hover : AnyShapeStyle(.clear)))

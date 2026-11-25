@@ -159,7 +159,7 @@ struct HomeStats {
     var latestDownloads: [FileItem] = []
     /// The menu bar's downloads: everything downloaded today, or this week when today has none.
     var recentDownloads: [FileItem] = []
-    var recentDownloadsTitle = "Latest downloads"
+    var recentDownloadsTitle = "Latest files"
     var sources: [SourceSummary] = []
     var recentBy: [FileCategory: [FileItem]] = [:]
     var recentAll: [FileItem] = []
@@ -575,10 +575,11 @@ final class AppState {
             guard !Task.isCancelled else { return }
             let items = index.items
             let large = Int64(prefs.largeFileMB) * 1_000_000
+            let newRoots = AppState.newFileRoots(index.roots)
             let pinned = self.pinnedFolders
             let folders = self.smartFolders
             let (stats, previews, counts) = await Task.detached(priority: .utility) { () -> (HomeStats, [String: (items: [FileItem], count: Int)], [UUID: SmartFolderStats]) in
-                let st = AppState.computeStats(items, largeBytes: large)
+                let st = AppState.computeStats(items, largeBytes: large, newFileRoots: newRoots)
                 var pv: [String: (items: [FileItem], count: Int)] = [:]
                 for p in pinned {
                     let list = FileScanner.list(folder: URL(fileURLWithPath: p), rootName: (p as NSString).lastPathComponent)
@@ -628,7 +629,42 @@ final class AppState {
         return st
     }
 
-    nonisolated static func computeStats(_ items: [FileItem], largeBytes: Int64) -> HomeStats {
+    /// A folder holding one of these is a code project; everything inside it is the project's own churn.
+    nonisolated static let projectMarkers = [".git", "Package.swift", "package.json", "Cargo.toml", "go.mod",
+                                             "pyproject.toml", "Gemfile", "pom.xml", "build.gradle", "Podfile"]
+    nonisolated static let archiveExts = ["zip", "tar", "tar.gz", "tgz", "rar", "7z"]
+
+    /// The file is one piece of something bigger that the dropdown already shows (or shouldn't list file by
+    /// file): it sits inside a code project, or inside a folder unpacked from an archive kept next to it
+    /// ("Designs/" beside "Designs.zip" — the zip is in the list already). Checks every folder between the
+    /// file and its root; answers are cached per folder.
+    nonisolated static func insidePartOfSomethingBigger(_ path: String, root: String, cache: inout [String: Bool]) -> Bool {
+        var dir = (path as NSString).deletingLastPathComponent
+        var walked: [String] = []
+        var found = false
+        let fm = FileManager.default
+        while dir.count > root.count, dir.hasPrefix(root) {
+            if let known = cache[dir] { found = known; break }
+            walked.append(dir)
+            if projectMarkers.contains(where: { fm.fileExists(atPath: dir + "/" + $0) })
+                || dir.hasSuffix(".xcodeproj")
+                || archiveExts.contains(where: { fm.fileExists(atPath: dir + "." + $0) }) {
+                found = true; break
+            }
+            dir = (dir as NSString).deletingLastPathComponent
+        }
+        for d in walked { cache[d] = found }
+        return found
+    }
+
+    /// The person's own folders, where any new file counts as new in the menu bar dropdown: the usual home
+    /// folders and the ones they added. Not Applications, and not the rest of the home folder, where apps
+    /// keep their own working files (thousands of meeting snapshots, model downloads…).
+    nonisolated static func newFileRoots(_ roots: [FileScanner.Root]) -> [String] {
+        roots.filter { !$0.searchOnly && $0.name != "Applications" }.map { $0.url.standardizedFileURL.path }
+    }
+
+    nonisolated static func computeStats(_ items: [FileItem], largeBytes: Int64, newFileRoots: [String] = []) -> HomeStats {
         var s = HomeStats()
         var sources: [String: SourceSummary] = [:]
         for item in items where !item.isFolder {
@@ -661,12 +697,24 @@ final class AppState {
         }
             .sorted { ($0.added ?? $0.activityDate) > ($1.added ?? $1.activityDate) }
         s.latestDownloads = Array(allDownloads.prefix(14))
-        // The menu bar dropdown: the last month of downloads (at least the latest 30), newest first. It opens on
-        // the newest and scrolls back through older ones; the heading names the newest day.
+        // The menu bar dropdown: everything new on this Mac in the last month (at least the latest 30), newest
+        // first. That's every download, plus any file that arrived in the person's own folders (Desktop,
+        // Documents, Movies… and folders they added), however it got there: a screen recording, an export,
+        // something saved from an app. Left out: the inside of code projects (they churn constantly) and of unzipped archives.
         let monthBack = Calendar.current.startOfDay(for: Date()).addingTimeInterval(-29 * 86_400)
-        let month = allDownloads.prefix { ($0.added ?? $0.activityDate) >= monthBack }
-        s.recentDownloads = Array(month.count >= 30 ? month.prefix(150) : allDownloads.prefix(30))
-        s.recentDownloadsTitle = s.recentDownloads.first.map { MenuDay.of($0.added ?? $0.activityDate).heading } ?? "Latest downloads"
+        let downloadPaths = Set(allDownloads.map(\.path))
+        var projectCache: [String: Bool] = [:]
+        let arrived = items.filter { item in
+            guard !item.isFolder, item.category != .apps, !downloadPaths.contains(item.path),
+                  let added = item.added, added >= monthBack,
+                  let root = newFileRoots.first(where: { item.path.hasPrefix($0 + "/") }) else { return false }
+            if item.rootName == "Downloads" { return false }   // Downloads keeps its own rule above
+            return !Self.insidePartOfSomethingBigger(item.path, root: root, cache: &projectCache)
+        }
+        let everything = (allDownloads + arrived).sorted { ($0.added ?? $0.activityDate) > ($1.added ?? $1.activityDate) }
+        let month = everything.prefix { ($0.added ?? $0.activityDate) >= monthBack }
+        s.recentDownloads = Array(month.count >= 30 ? month.prefix(150) : everything.prefix(30))
+        s.recentDownloadsTitle = s.recentDownloads.first.map { MenuDay.of($0.added ?? $0.activityDate).heading } ?? "Latest files"
         s.sources = sources.values.sorted { a, b in
             if a.source.isWebsite != b.source.isWebsite { return !a.source.isWebsite }
             return a.count > b.count

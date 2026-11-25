@@ -337,6 +337,16 @@ enum DebugCLI {
                     items[j].camera = m.camera; items[j].pixelWidth = m.width; items[j].pixelHeight = m.height
                 }
             }
+            if queries.contains("--menu") {
+                // What the menu bar dropdown lists, newest first, with the reason each file is there.
+                queries.removeAll { $0 == "--menu" }
+                let stats = AppState.computeStats(items, largeBytes: 500_000_000, newFileRoots: AppState.newFileRoots(roots))
+                print("\(stats.recentDownloadsTitle): \(stats.recentDownloads.count) files")
+                for item in stats.recentDownloads {
+                    let why = item.source?.name ?? "in " + item.url.deletingLastPathComponent().lastPathComponent
+                    print("  \(Fmt.relative(item.added ?? item.activityDate))  \(item.name)  (\(why))")
+                }
+            }
             if args.contains("--dupes") {
                 let groups = DuplicateFinder.identical(items) { _ in }
                 print("Identical groups: \(groups.count) → " + groups.map { $0.items.map(\.name).joined(separator: " = ") }.joined(separator: " | "))
