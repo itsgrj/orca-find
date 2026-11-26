@@ -202,6 +202,16 @@ enum DesignSnapshots {
                 MenuUI.shared.toast = nil
                 await shot(DropShelfView(notch: 32).fixedSize().background(Color(white: 0.85)), "b06-shelf-notch", NSSize(width: 760, height: 240))
                 await shot(DropShelfView(notch: 0).fixedSize(), "b07-shelf-no-notch", NSSize(width: 760, height: 220))
+                // Holding with a stack of pictures and a single file, closed and then opened with three selected.
+                let pics = Array(FileIndex.shared.items.filter { $0.category == .images }.map(\.path).prefix(20))
+                if let lone = FileIndex.shared.items.first(where: { $0.category == .documents })?.path, pics.count > 3 {
+                    let saved = prefs.shelfStacks
+                    prefs.shelfStacks = [pics, [lone]]
+                    await shot(DropShelfView(notch: 32).fixedSize().background(Color(white: 0.85)), "b06b-shelf-stacks", NSSize(width: 760, height: 260))
+                    await shot(DropShelfView(notch: 32, initialOpen: pics, initialSelected: [pics[1], pics[2], pics[3]]).fixedSize().background(Color(white: 0.85)),
+                               "b06c-shelf-stack-open", NSSize(width: 800, height: 380))
+                    prefs.shelfStacks = saved
+                }
                 await shot(SortPlanSheet(plan: SortDownloads.plan(FileIndex.shared.items, now: Date().addingTimeInterval(3600))) {}, "b08-sort-plan", NSSize(width: 560, height: 560))
             }
             if want("i") {

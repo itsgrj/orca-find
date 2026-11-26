@@ -137,8 +137,9 @@ final class Preferences {
     /// Open the shelf when a file drag starts / when the pointer rests on the notch.
     var shelfOnDrag: Bool { didSet { d.set(shelfOnDrag, forKey: "shelfOnDrag") } }
     var shelfOnNotch: Bool { didSet { d.set(shelfOnNotch, forKey: "shelfOnNotch") } }
-    /// Files parked in Holding (by reference; they stay where they are).
-    var shelfHolding: [String] { didSet { d.set(shelfHolding, forKey: "shelfHolding") } }
+    /// Files parked in Holding (by reference; they stay where they are), newest drop first. Each inner list is one
+    /// drop: several files dropped together stay together as a stack.
+    var shelfStacks: [[String]] { didSet { d.set(shelfStacks, forKey: "shelfStacks") } }
     /// Keep a short video when what was grabbed is moving.
     var captureClips: Bool { didSet { d.set(captureClips, forKey: "captureClips") } }
     /// Let Apple Intelligence add one or two tags from the words and the picture.
@@ -225,7 +226,8 @@ final class Preferences {
         }
         shelfOnDrag = d.object(forKey: "shelfOnDrag") as? Bool ?? true
         shelfOnNotch = d.object(forKey: "shelfOnNotch") as? Bool ?? true
-        shelfHolding = d.stringArray(forKey: "shelfHolding") ?? []
+        // Holding used to be one flat list: each of those files becomes its own single-file stack.
+        shelfStacks = d.array(forKey: "shelfStacks") as? [[String]] ?? (d.stringArray(forKey: "shelfHolding") ?? []).map { [$0] }
         captureAutoTags = d.object(forKey: "captureAutoTags") as? Bool ?? true
         cardSize = d.object(forKey: "cardSize") as? Double ?? 168
         viewMode = ViewMode(rawValue: d.string(forKey: "viewMode") ?? "") ?? .grid
