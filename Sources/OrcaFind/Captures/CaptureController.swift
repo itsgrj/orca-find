@@ -187,12 +187,14 @@ final class CaptureController {
             // The dimmed screen stays up (it's left out of every grab) and becomes the dim while you talk.
             self.outline?.orderOut(nil)
             self.outline = grabbed.cover
-            // A clicked picture can sit in a window behind the app in front (pointing at a pin while
-            // another app is active); then that window's app is where the capture came from.
+            // What was grabbed can sit in a window behind the app in front (a pin or a post in the browser
+            // while another app is active); then that window's app is where the capture came from.
             var context = front
             var pageFetch = frontFetch
-            if let picture, picture.pid > 0, picture.pid != front.pid {
-                context = CaptureContext.app(pid: picture.pid)
+            let center = PageInspector.axRect(NSRect(x: rect.midX, y: rect.midY, width: 0, height: 0)).origin
+            let sourcePid = picture.map { $0.pid } ?? CaptureContext.windowOwner(at: center) ?? 0
+            if sourcePid > 0, sourcePid != front.pid {
+                context = CaptureContext.app(pid: sourcePid)
                 pageFetch = context.bundleID.flatMap { id in
                     CaptureContext.browsers[id] == nil ? nil : Task { await CaptureContext.fetchPage(bundleID: id) }
                 }

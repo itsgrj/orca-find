@@ -166,7 +166,7 @@ final class RegionGrabber {
             if let cover, let view = cover.contentView as? GrabView {
                 cover.ignoresMouseEvents = true
                 view.hold(rect.offsetBy(dx: -screen.frame.minX, dy: -screen.frame.minY),
-                          radius: picture?.cornerRadius ?? 0, glow: picture != nil)
+                          radius: picture?.cornerRadius ?? 0)
             }
             let center = NSPoint(x: rect.midX, y: rect.midY)
             let image = picture == nil ? nil : stills.first { $0.frame.contains(center) }?.crop(rect)
@@ -209,8 +209,9 @@ private final class GrabView: NSView {
     private var current: NSPoint?
     private var mouse: NSPoint?
     private let glow = PictureGlow()
-    /// After the click: the grab stays clear while the rest stays dim (labels gone, clicks pass through).
-    private var held: (rect: NSRect, radius: CGFloat, glow: Bool)?
+    /// After the click or drag: the grab stays clear and keeps its glow while the rest stays dim
+    /// (labels gone, clicks pass through).
+    private var held: (rect: NSRect, radius: CGFloat)?
 
     @objc dynamic var dimLevel: CGFloat = GrabView.restingDim { didSet { needsDisplay = true } }
     private var dimTarget = GrabView.restingDim
@@ -218,8 +219,8 @@ private final class GrabView: NSView {
         key == "dimLevel" ? CABasicAnimation() : super.defaultAnimation(forKey: key)
     }
 
-    func hold(_ rect: NSRect, radius: CGFloat, glow: Bool) {
-        held = (rect, radius, glow)
+    func hold(_ rect: NSRect, radius: CGFloat) {
+        held = (rect, radius)
         start = nil; current = nil
         needsDisplay = true
     }
@@ -237,12 +238,15 @@ private final class GrabView: NSView {
         glow.root.frame = bounds
     }
 
-    /// The glow follows the lit picture; a drag (a box of its own) hides it.
+    /// The glow follows whatever is being grabbed: the box as you drag it, or the lit picture.
+    /// It's left out of the screenshot and the clip (Orca's own windows never are in them).
     override func viewWillDraw() {
         super.viewWillDraw()
         glow.root.frame = bounds
         if let held {
-            glow.show(held.glow ? held.rect : nil, radius: held.radius)
+            glow.show(held.rect, radius: held.radius)
+        } else if let box = glowingBox {
+            glow.show(box, radius: 0)
         } else {
             glow.show(selection == nil ? litRect : nil, radius: grabber?.lit?.picture.cornerRadius ?? 0)
         }
@@ -276,6 +280,12 @@ private final class GrabView: NSView {
     private var selection: NSRect? {
         guard let s = start, let c = current else { return nil }
         return NSRect(x: min(s.x, c.x), y: min(s.y, c.y), width: abs(s.x - c.x), height: abs(s.y - c.y))
+    }
+
+    /// The dragged box once it's a real drag (not a click that wobbled a few points).
+    private var glowingBox: NSRect? {
+        guard let r = selection, r.width >= 8 || r.height >= 8 else { return nil }
+        return r
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -318,29 +328,17 @@ private final class GrabView: NSView {
         NSColor.black.withAlphaComponent(dimLevel).setFill()
         bounds.fill()
         if let held {
-            // Talking about it now: the grab stays clear (a dragged box keeps its purple edge; a picture its glow).
+            // Talking about it now: the grab stays clear inside its glow.
             NSGraphicsContext.current?.compositingOperation = .clear
-            if held.glow {
-                NSBezierPath(roundedRect: held.rect, xRadius: held.radius, yRadius: held.radius).fill()
-            } else {
-                held.rect.fill()
-            }
+            NSBezierPath(roundedRect: held.rect, xRadius: held.radius, yRadius: held.radius).fill()
             NSGraphicsContext.current?.compositingOperation = .sourceOver
-            if !held.glow {
-                let border = NSBezierPath(rect: held.rect.insetBy(dx: -1, dy: -1))
-                border.lineWidth = 2
-                NSColor(hex: 0x8B5CF6).setStroke()
-                border.stroke()
-            }
         } else if let r = selection {
+            // The box being dragged: clear inside, the glow layer draws its edge.
             NSGraphicsContext.current?.compositingOperation = .clear
             r.fill()
             NSGraphicsContext.current?.compositingOperation = .sourceOver
-            let border = NSBezierPath(rect: r.insetBy(dx: -1, dy: -1))
-            border.lineWidth = 2
-            NSColor(hex: 0x8B5CF6).setStroke()
-            border.stroke()
-            drawLabel("\(Int(r.width)) × \(Int(r.height))", at: NSPoint(x: r.minX, y: r.minY - 30), small: true)
+            let below = r.minY - 44 >= 8
+            drawLabel("\(Int(r.width)) × \(Int(r.height))", at: NSPoint(x: r.minX, y: below ? r.minY - 44 : r.maxY + 18), small: true)
         } else if let r = litRect {
             // The picture under the mouse: lifted out of the dimming, at its own corners; the glow layer draws its edge.
             let radius = grabber?.lit?.picture.cornerRadius ?? 0

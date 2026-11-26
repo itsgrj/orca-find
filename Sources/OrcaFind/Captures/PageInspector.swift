@@ -50,8 +50,16 @@ enum PageInspector {
         guard let web = webArea(in: app, box: box) else { return found }
         found.pageURL = urlString(web, kAXURLAttribute)
 
-        let links = linksUnder(box, in: web)
-        found.itemURL = pickItem(links, box: box, page: found.pageURL)
+        let under = linksUnder(box, in: web)
+        found.itemURL = pickItem(under.links, box: box, page: found.pageURL)
+        // A box around only part of a post (a tweet's text without its header): the post's own link is
+        // elsewhere in the same card, so look across the whole card.
+        if found.itemURL == nil, let card = cardAround(box, in: under.cards) {
+            found.itemURL = topItem(linksUnder(card, in: web).links, in: card, page: found.pageURL)
+        }
+        // Some pages lay their content out outside the boxes that hold it, so skipping by position can
+        // still miss the post under the box; then look through everything once.
+        if found.itemURL == nil { found.itemURL = pickItem(linksUnder(box, in: web, skipAway: false).links, box: box, page: found.pageURL) }
         if SourceLinks.supportsMoment(found.pageURL) { found.videoSeconds = videoPosition(in: web) }
         return found
     }
@@ -163,21 +171,43 @@ enum PageInspector {
 
     private struct Link { let url: String; let frame: CGRect }
 
-    /// Every link that overlaps the box. Skips parts of the page that don't touch it.
-    private static func linksUnder(_ box: CGRect, in web: AXUIElement) -> [Link] {
+    /// Every link that overlaps the box. Skips parts of the page that don't touch it (`skipAway`).
+    /// A container only a few points tall or wide is never skipped: X (Twitter) wraps its whole page in
+    /// 1pt-tall boxes, and its posts spill out below them.
+    /// Also returns the post cards (`<article>`, as X, Reddit and others mark each post) that touch the box.
+    private static func linksUnder(_ box: CGRect, in web: AXUIElement, skipAway: Bool = true) -> (links: [Link], cards: [CGRect]) {
         let reach = box.insetBy(dx: -4, dy: -4)
         let deadline = Date().addingTimeInterval(0.8)
-        var stack = [web], seen = 0, out: [Link] = []
+        var stack = [web], seen = 0, out: [Link] = [], cards: [CGRect] = []
         while let e = stack.popLast(), seen < 6000, Date() < deadline {
             seen += 1
             let f = frame(e)
-            if let f, f.width > 0, f.height > 0, !f.intersects(reach) { continue }
-            if string(e, kAXRoleAttribute) == "AXLink", let f, let u = urlString(e, kAXURLAttribute), u.hasPrefix("http") {
+            if skipAway, let f, f.width > 4, f.height > 4, !f.intersects(reach) { continue }
+            let role = string(e, kAXRoleAttribute)
+            if role == "AXLink", let f, let u = urlString(e, kAXURLAttribute), u.hasPrefix("http") {
                 out.append(Link(url: u, frame: f))
+            } else if role == "AXGroup", let f, f.intersects(reach),
+                      string(e, kAXSubroleAttribute) == "AXDocumentArticle" || string(e, kAXRoleDescriptionAttribute) == "article" {
+                cards.append(f)
             }
             stack += children(e).reversed()
         }
-        return out
+        return (out, cards)
+    }
+
+    /// The one post card the box was drawn inside: most of the box falls within it.
+    private static func cardAround(_ box: CGRect, in cards: [CGRect]) -> CGRect? {
+        let best = cards.max { $0.intersection(box).area < $1.intersection(box).area }
+        guard let best, best.intersection(box).area >= 0.6 * max(box.area, 1) else { return nil }
+        return best
+    }
+
+    /// Inside one post card, the post's own link: the top-most link to a single item (a tweet's time
+    /// stamp sits in its header, above any post it quotes).
+    private static func topItem(_ links: [Link], in card: CGRect, page: String?) -> String? {
+        let inside = links.filter { card.insetBy(dx: -2, dy: -2).contains($0.frame) && $0.frame.area > 1
+                                    && SourceLinks.item($0.url) != nil && !SourceLinks.same($0.url, page) }
+        return inside.min { ($0.frame.minY, $0.frame.minX) < ($1.frame.minY, $1.frame.minX) }.map { clean($0.url) }
     }
 
     /// The one thing the box was drawn around.
