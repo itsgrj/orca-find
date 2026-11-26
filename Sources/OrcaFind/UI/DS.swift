@@ -106,10 +106,12 @@ struct CardBackground: ViewModifier {
     var radius: CGFloat = 16
     var fill: Color = DS.surface
     func body(content: Content) -> some View {
+        // The shadow sits on the card's shape only. On the whole card, SwiftUI gives every text, icon and
+        // button inside its own shadow (hundreds on Tidy), and the window has to redraw each one while scrolling.
         content
-            .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(fill))
+            .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(fill)
+                .shadow(color: .black.opacity(0.05), radius: 1, y: 1))
             .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(DS.border.opacity(0.9), lineWidth: 1))
-            .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
     }
 }
 
@@ -128,9 +130,12 @@ struct PButtonStyle: ButtonStyle {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .foregroundStyle(fg)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(bg))
+            // Shadow on the filled shape only (and only where it shows), not on the label's text and icon.
+            .background {
+                let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+                if kind == .primary || kind == .critical { shape.fill(bg).shadow(color: .black.opacity(0.2), radius: 1, y: 1) } else { shape.fill(bg) }
+            }
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(kind == .secondary ? DS.borderStrong : .clear))
-            .shadow(color: kind == .primary || kind == .critical ? .black.opacity(0.2) : .clear, radius: 1, y: 1)
             .opacity(configuration.isPressed ? 0.75 : 1)
             .contentShape(Rectangle())
             .handCursor()

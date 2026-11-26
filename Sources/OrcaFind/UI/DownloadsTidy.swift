@@ -454,9 +454,10 @@ struct TidyScreen: View {
                                 Thumb(item: i, size: 88, mode: i.category == .images || i.category == .videos ? .fill : .fit)
                             }
                         }
-                        .frame(width: 44, height: 44).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 9))
+                        .frame(width: 44, height: 44).clipShape(RoundedRectangle(cornerRadius: 9))
                         .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(DS.surface, lineWidth: 2))
-                        .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
+                        // Shadow on the white tile only, not on the picture and its border separately.
+                        .background(RoundedRectangle(cornerRadius: 9).fill(Color.white).shadow(color: .black.opacity(0.12), radius: 2, y: 1))
                     }
                 }
                 Text(checking ? "Still looking…" : locked ? "Needs Full Disk Access" : count == 0 ? "All clear"
